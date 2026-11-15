@@ -24,3 +24,4 @@
 - [x] Add per-workspace Dataset/CAPI configuration with real connection tests, test events, enable/disconnect and Super Admin delivery monitoring.
 - [ ] Implement consent-checked event transmission; requires verified dataset eligibility, customer consent workflow and Meta configuration.
 - [ ] Verify Meta receipt, event deduplication and withdrawal behavior with test events.
+- [ ] Confirm Meta leadgen webhook is live at the published address (needs META_WEBHOOK_VERIFY_TOKEN)
