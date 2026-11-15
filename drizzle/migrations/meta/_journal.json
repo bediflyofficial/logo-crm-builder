@@ -8,6 +8,27 @@
       "when": 1794726140535,
       "tag": "0000_bedifly_crm_phase_one",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794739203830,
+      "tag": "0001_bedifly_admin_bootstrap_and_member_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794739299778,
+      "tag": "0002_lock_down_crm_internal_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794739373007,
+      "tag": "0003_bedifly_employee_directory_and_lead_scoring",
+      "breakpoints": true
     }
   ]
 }

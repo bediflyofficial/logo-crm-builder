@@ -378,24 +378,36 @@ export type Database = {
       }
       organization_members: {
         Row: {
+          email: string | null
+          full_name: string | null
           id: string
           is_active: boolean
           joined_at: string
           organization_id: string
+          phone: string | null
+          profile_picture_url: string | null
           user_id: string
         }
         Insert: {
+          email?: string | null
+          full_name?: string | null
           id?: string
           is_active?: boolean
           joined_at?: string
           organization_id: string
+          phone?: string | null
+          profile_picture_url?: string | null
           user_id: string
         }
         Update: {
+          email?: string | null
+          full_name?: string | null
           id?: string
           is_active?: boolean
           joined_at?: string
           organization_id?: string
+          phone?: string | null
+          profile_picture_url?: string | null
           user_id?: string
         }
         Relationships: [
