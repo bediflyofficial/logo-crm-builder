@@ -30,3 +30,4 @@ use the editor.
 <!-- LOVABLE:END -->
 
 - Keep Bedifly CRM tenant authorization in database-backed role tables and row-level policies, with browser data access scoped through the generated authenticated client, so client workspaces cannot cross-read records.
+- Keep workspace-access eligibility in a shared pure predicate so the sign-in boundary and its tests enforce the same rule.

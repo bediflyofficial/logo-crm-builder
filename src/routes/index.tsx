@@ -62,8 +62,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
 import { createClientWorkspace, ensureBediflyAdminAccess, inviteSalesExecutive } from "@/lib/crm.functions";
+import { hasCrmWorkspaceAccess, resolveWorkspaceSelection } from "@/lib/crm-access";
 import type { Database } from "@/integrations/supabase/types";
-import bediflyLogo from "@/assets/bedifly-logo.png.asset.json";
+import bediflyLogo from "@/assets/bedifly-logo-trim.png.asset.json";
 
 type Organization = Database["public"]["Tables"]["organizations"]["Row"];
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
@@ -117,6 +118,7 @@ export const Route = createFileRoute("/")({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "preload", href: bediflyLogo.url, as: "image" }],
   }),
   component: BediflyCRM,
 });
@@ -149,6 +151,8 @@ function BediflyCRM() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [qualityFilter, setQualityFilter] = useState("All qualities");
+  const [sourceFilter, setSourceFilter] = useState("All sources");
+  const [assigneeFilter, setAssigneeFilter] = useState("All executives");
   const [dateFilter, setDateFilter] = useState("Last 30 days");
   const [view, setView] = useState<"table" | "kanban">("table");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -180,9 +184,12 @@ function BediflyCRM() {
       const matchesSearch = !term || [lead.full_name, lead.phone, lead.email, lead.source, lead.campaign_name]
         .some((value) => value?.toLowerCase().includes(term));
       return matchesSearch && (statusFilter === "All statuses" || lead.status === statusFilter) &&
-        (qualityFilter === "All qualities" || lead.quality === qualityFilter) && (!cutoff || new Date(lead.created_at) >= cutoff);
+        (qualityFilter === "All qualities" || lead.quality === qualityFilter) &&
+        (sourceFilter === "All sources" || lead.source === sourceFilter) &&
+        (assigneeFilter === "All executives" || (assigneeFilter === "Unassigned" ? !lead.assigned_to : lead.assigned_to === assigneeFilter)) &&
+        (!cutoff || new Date(lead.created_at) >= cutoff);
     });
-  }, [scopedLeads, search, statusFilter, qualityFilter, dateFilter]);
+  }, [scopedLeads, search, statusFilter, qualityFilter, sourceFilter, assigneeFilter, dateFilter]);
   const stats = useMemo(() => getLeadStats(scopedLeads), [scopedLeads]);
   const chartTrend = useMemo(() => getLeadTrend(scopedLeads), [scopedLeads]);
   const statusBreakdown = useMemo(() => statusOptions.map((status) => ({ name: status, value: scopedLeads.filter((lead) => lead.status === status).length })).filter((entry) => entry.value), [statusOptions, scopedLeads]);
@@ -218,13 +225,14 @@ function BediflyCRM() {
         : await orgQuery.in("id", userRoles.map((item) => item.organization_id).filter((id): id is string => Boolean(id)));
       if (orgError) throw orgError;
       const accessibleOrganizations = (orgRows ?? []) as Organization[];
-      setHasWorkspaceAccess(Boolean(platformRole) || accessibleOrganizations.length > 0);
+      setHasWorkspaceAccess(hasCrmWorkspaceAccess(Boolean(platformRole), accessibleOrganizations.length));
       setOrganizations(accessibleOrganizations);
-      const targetId = nextOrgId && accessibleOrganizations.some((org) => org.id === nextOrgId)
-        ? nextOrgId
-        : activeOrganizationId && accessibleOrganizations.some((org) => org.id === activeOrganizationId)
-          ? activeOrganizationId
-          : accessibleOrganizations[0]?.id ?? "";
+      const targetId = resolveWorkspaceSelection(
+        Boolean(platformRole),
+        nextOrgId,
+        activeOrganizationId,
+        accessibleOrganizations.map((organization) => organization.id),
+      );
       setActiveOrganizationId(targetId);
       const leadQuery = supabase.from("leads").select("*").is("deleted_at", null).order("created_at", { ascending: false });
       const { data: leadRows, error: leadError } = targetId && (!platformRole || scopeLeadsToSelected)
@@ -646,7 +654,7 @@ function BediflyCRM() {
           {!activeOrganization && !isMaster && !loadError && <div className="crm-card p-8 text-center"><Building2 className="mx-auto size-8 text-muted-foreground" /><h2 className="mt-3 text-lg font-semibold">No workspace access</h2><p className="mt-1 text-sm text-muted-foreground">Ask your Bedifly administrator to send you a workspace invitation.</p></div>}
           {(page === "overview") && <OverviewPage isMaster={isMaster} organization={activeOrganization} organizations={organizations} stats={stats} leads={scopedLeads} members={members} followUps={activeFollowUps.filter((item) => !isMaster || !activeOrganizationId || item.organization_id === activeOrganizationId)} trend={chartTrend} statuses={statusBreakdown} qualities={qualityBreakdown} onOpenLead={openLead} onPage={setPage} />}
           {page === "clients" && isMaster && <ClientsPage organizations={organizations} leads={allLeads} stats={stats} onCreate={() => setShowCreateClient(true)} onEdit={(organization) => { setEditingClient(organization); setClientForm({ name: organization.name, contactPerson: organization.contact_person ?? "", email: organization.email ?? "", phone: organization.phone ?? "", businessCategory: organization.business_category ?? "", website: organization.website ?? "", address: organization.address ?? "", city: organization.city ?? "", country: organization.country ?? "" }); setShowCreateClient(true); }} onToggleStatus={saveOrganizationStatus} onOpen={(organization) => { setActiveOrganizationId(organization.id); setPage("leads"); void refresh(organization.id); }} />}
-          {(page === "leads" || page === "pipeline") && <LeadsPage page={page} isMaster={isMaster} canManageLeads={role !== "sales_exec"} leads={visibleLeads} members={members} stats={getLeadStats(visibleLeads)} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} qualityFilter={qualityFilter} setQualityFilter={setQualityFilter} dateFilter={dateFilter} setDateFilter={setDateFilter} view={page === "pipeline" ? "kanban" : view} setView={setView} selectedIds={selectedIds} setSelectedIds={setSelectedIds} statusOptions={statusOptions} onOpenLead={openLead} onCreate={() => { setEditingLeadId(null); setLeadForm(emptyLead); setShowCreateLead(true); }} onExport={() => exportLeads()} onImport={importCsv} onBulkUpdate={bulkUpdate} onBulkDelete={bulkDelete} onMoveLead={moveLead} bulkAssignee={bulkAssignee} setBulkAssignee={setBulkAssignee} membersById={membersById} />}
+          {(page === "leads" || page === "pipeline") && <LeadsPage page={page} isMaster={isMaster} canManageLeads={role !== "sales_exec"} leads={visibleLeads} members={members} stats={getLeadStats(visibleLeads)} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} qualityFilter={qualityFilter} setQualityFilter={setQualityFilter} sourceFilter={sourceFilter} setSourceFilter={setSourceFilter} assigneeFilter={assigneeFilter} setAssigneeFilter={setAssigneeFilter} dateFilter={dateFilter} setDateFilter={setDateFilter} view={page === "pipeline" ? "kanban" : view} setView={setView} selectedIds={selectedIds} setSelectedIds={setSelectedIds} statusOptions={statusOptions} onOpenLead={openLead} onCreate={() => { setEditingLeadId(null); setLeadForm(emptyLead); setShowCreateLead(true); }} onExport={() => exportLeads()} onImport={importCsv} onBulkUpdate={bulkUpdate} onBulkDelete={bulkDelete} onMoveLead={moveLead} bulkAssignee={bulkAssignee} setBulkAssignee={setBulkAssignee} membersById={membersById} />}
           {page === "team" && <TeamPage isMaster={isMaster} canManageTeam={role !== "sales_exec"} organizations={organizations} members={members} leads={allLeads} followUps={activeFollowUps} onInvite={() => setShowInvite(true)} onToggleMember={setMemberActive} />}
           {page === "follow-ups" && <FollowUpsPage followUps={activeFollowUps} leads={allLeads} membersById={membersById} onComplete={completeFollowUp} onOpenLead={(id) => { const lead = allLeads.find((row) => row.id === id); if (lead) void openLead(lead); }} />}
           {page === "reports" && <ReportsPage leads={scopedLeads} members={members} onExport={exportLeads} />}
@@ -811,15 +819,15 @@ function ClientsPage({ organizations, leads, onCreate, onEdit, onToggleStatus, o
   </div>;
 }
 
-function LeadsPage({ page, isMaster, canManageLeads, leads, members, stats, search, setSearch, statusFilter, setStatusFilter, qualityFilter, setQualityFilter, dateFilter, setDateFilter, view, setView, selectedIds, setSelectedIds, statusOptions, onOpenLead, onCreate, onExport, onImport, onBulkUpdate, onBulkDelete, onMoveLead, bulkAssignee, setBulkAssignee, membersById }: {
+function LeadsPage({ page, isMaster, canManageLeads, leads, members, stats, search, setSearch, statusFilter, setStatusFilter, qualityFilter, setQualityFilter, sourceFilter, setSourceFilter, assigneeFilter, setAssigneeFilter, dateFilter, setDateFilter, view, setView, selectedIds, setSelectedIds, statusOptions, onOpenLead, onCreate, onExport, onImport, onBulkUpdate, onBulkDelete, onMoveLead, bulkAssignee, setBulkAssignee, membersById }: {
   page: PageKey; isMaster: boolean; canManageLeads: boolean; leads: Lead[]; members: Member[]; stats: ReturnType<typeof getLeadStats>; search: string; setSearch: (v: string) => void; statusFilter: string; setStatusFilter: (v: string) => void;
-  qualityFilter: string; setQualityFilter: (v: string) => void; dateFilter: string; setDateFilter: (v: string) => void; view: "table" | "kanban"; setView: (v: "table" | "kanban") => void;
+  qualityFilter: string; setQualityFilter: (v: string) => void; sourceFilter: string; setSourceFilter: (v: string) => void; assigneeFilter: string; setAssigneeFilter: (v: string) => void; dateFilter: string; setDateFilter: (v: string) => void; view: "table" | "kanban"; setView: (v: "table" | "kanban") => void;
   selectedIds: string[]; setSelectedIds: (v: string[] | ((ids: string[]) => string[])) => void; statusOptions: string[]; onOpenLead: (lead: Lead) => void; onCreate: () => void; onExport: () => void;
   onImport: (file?: File) => void; onBulkUpdate: (changes: Database["public"]["Tables"]["leads"]["Update"]) => void; bulkAssignee: string; setBulkAssignee: (v: string) => void; membersById: Record<string, Member>;
   onBulkDelete: () => void; onMoveLead: (lead: Lead, status: string) => void;
 }) {
   const isPipeline = page === "pipeline";
-  const activeFilterCount = Number(statusFilter !== "All statuses") + Number(qualityFilter !== "All qualities") + Number(dateFilter !== "Last 30 days");
+  const activeFilterCount = Number(statusFilter !== "All statuses") + Number(qualityFilter !== "All qualities") + Number(sourceFilter !== "All sources") + Number(assigneeFilter !== "All executives") + Number(dateFilter !== "Last 30 days");
   const leadTypes = isMaster ? ["New Lead", "Contacted", "Qualified", "Converted"] : ["New Lead", "Contacted", "Qualified", "Converted"];
   return <div className="space-y-6"><PageIntro eyebrow={isMaster ? "PLATFORM LEADS" : "SALES WORKSPACE"} title={isPipeline ? "Lead pipeline" : isMaster ? "All client leads" : "Lead management"} description={isMaster ? "Review lead performance across accessible client workspaces." : "Find, assign, and follow through on every sales opportunity."} action={<div className="flex flex-wrap gap-2">{canManageLeads && <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent"><ArrowDownToLine className="size-4" /> Import CSV<input type="file" accept=".csv,text/csv" className="sr-only" onChange={(event) => { void onImport(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>}<Button variant="outline" size="sm" onClick={onExport}><Download className="size-4" /> Export CSV</Button>{!isMaster && canManageLeads && <Button size="sm" onClick={onCreate}><Plus className="size-4" /> Add lead</Button>}</div>} />
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{leadTypes.map((status) => <MetricTile key={status} label={status} value={leads.filter((lead) => lead.status === status).length} hint={status === "New Lead" ? "Awaiting first contact" : status === "Converted" ? "Won opportunities" : "Current workspace"} icon={status === "Converted" ? Check : status === "Qualified" ? Target : UsersRound} tone={status === "Converted" ? "green" : "blue"} />)}</div>
@@ -827,7 +835,9 @@ function LeadsPage({ page, isMaster, canManageLeads, leads, members, stats, sear
       <select aria-label="Lead date filter" className="h-9 rounded-md border border-input bg-background px-2.5 text-xs" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)}>{["Today", "Yesterday", "Last 7 days", "Last 30 days", "This month", "All time"].map((date) => <option key={date}>{date}</option>)}</select>
       <select aria-label="Filter lead status" className="h-9 max-w-[160px] rounded-md border border-input bg-background px-2.5 text-xs" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>
       <select aria-label="Filter lead quality" className="h-9 rounded-md border border-input bg-background px-2.5 text-xs" value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value)}><option>All qualities</option>{QUALITIES.map((quality) => <option key={quality}>{quality}</option>)}</select>
-      <Button variant="outline" size="sm" onClick={() => { setStatusFilter("All statuses"); setQualityFilter("All qualities"); setDateFilter("Last 30 days"); }}><ListFilter className="size-4" /> {activeFilterCount ? `${activeFilterCount} filters` : "Filters"}</Button>
+      <select aria-label="Filter lead source" className="h-9 max-w-[145px] rounded-md border border-input bg-background px-2.5 text-xs" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option>All sources</option>{Array.from(new Set(leads.map((lead) => lead.source).filter(Boolean))).sort().map((source) => <option key={source}>{source}</option>)}</select>
+      <select aria-label="Filter sales executive" className="h-9 max-w-[170px] rounded-md border border-input bg-background px-2.5 text-xs" value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><option>All executives</option><option value="Unassigned">Unassigned</option>{members.filter((member) => member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select>
+      <Button variant="outline" size="sm" onClick={() => { setStatusFilter("All statuses"); setQualityFilter("All qualities"); setSourceFilter("All sources"); setAssigneeFilter("All executives"); setDateFilter("Last 30 days"); }}><ListFilter className="size-4" /> {activeFilterCount ? `${activeFilterCount} filters` : "Filters"}</Button>
       <div className="ml-auto flex rounded-md border border-border bg-muted/50 p-0.5"><Button size="sm" variant={view === "table" ? "secondary" : "ghost"} className="h-7 px-2.5 text-[11px]" onClick={() => setView("table")}><FileSpreadsheet className="size-3.5" /> Table</Button><Button size="sm" variant={view === "kanban" ? "secondary" : "ghost"} className="h-7 px-2.5 text-[11px]" onClick={() => setView("kanban")}><Workflow className="size-3.5" /> Board</Button></div>
     </div>
     {selectedIds.length > 0 && <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/[0.035] px-4 py-3"><span className="mr-2 text-xs font-medium text-foreground">{selectedIds.length} selected</span>{canManageLeads && <><select aria-label="Bulk update status" className="h-8 rounded-md border border-input bg-background px-2 text-xs" defaultValue="" onChange={(event) => { if (event.target.value) onBulkUpdate({ status: event.target.value }); }}><option value="">Change status…</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select><select aria-label="Bulk assign lead" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={bulkAssignee} onChange={(event) => { setBulkAssignee(event.target.value); if (event.target.value) onBulkUpdate({ assigned_to: event.target.value }); }}><option value="">Assign to…</option>{members.filter((member) => member.is_active && member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select><Button variant="outline" size="sm" className="text-destructive" onClick={onBulkDelete}><X className="size-4" /> Delete selected</Button></>}<Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>Clear</Button></div>}
@@ -879,7 +889,7 @@ function TeamPage({ isMaster, canManageTeam, organizations, members, leads, foll
   const teamMembers = members;
   return <div className="space-y-6"><PageIntro eyebrow="SALES ORGANIZATION" title={isMaster ? "Client teams" : "Sales team"} description={isMaster ? "View membership and lead assignments by client." : "Track team access and lead ownership in your workspace."} action={!isMaster && canManageTeam ? <Button onClick={onInvite}><Plus className="size-4" /> Invite executive</Button> : undefined} />
     {isMaster ? organizations.map((organization) => { const orgMembers = teamMembers.filter((member) => member.organization_id === organization.id); const orgLeads = leads.filter((lead) => lead.organization_id === organization.id); return <section className="crm-card overflow-hidden" key={organization.id}><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4"><div><p className="text-sm font-semibold text-foreground">{organization.name}</p><p className="mt-1 text-[11px] text-muted-foreground">{orgMembers.length} members · {orgLeads.length} leads</p></div><StatusPill label={organization.status} /></div><MemberTable members={orgMembers} leads={orgLeads} followUps={followUps.filter((item) => item.organization_id === organization.id)} onToggleMember={onToggleMember} canManageTeam={canManageTeam} /></section>; }) : <section className="crm-card overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4"><div><p className="text-sm font-semibold text-foreground">Workspace members</p><p className="mt-1 text-[11px] text-muted-foreground">{teamMembers.filter((member) => member.is_active).length} active of {teamMembers.length} members</p></div></div><MemberTable members={teamMembers} leads={leads} followUps={followUps} onToggleMember={onToggleMember} canManageTeam={canManageTeam} /></section>}
-    {!members.length && <EmptyState title="No team members yet" message="Workspace team invitations will appear here." action={!isMaster ? <Button size="sm" onClick={onInvite}><Plus className="size-4" /> Invite executive</Button> : undefined} />}</div>;
+    {!members.length && <EmptyState title="No team members yet" message="Workspace team invitations will appear here." action={!isMaster && canManageTeam ? <Button size="sm" onClick={onInvite}><Plus className="size-4" /> Invite executive</Button> : undefined} />}</div>;
 }
 
 function MemberTable({ members, leads, followUps, onToggleMember, canManageTeam }: { members: Member[]; leads: Lead[]; followUps: FollowUp[]; onToggleMember: (member: Member) => void; canManageTeam: boolean }) {
