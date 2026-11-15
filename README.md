@@ -1,4 +1,4 @@
-# Bedifly CRM — Phase 1
+# Bedifly CRM
 
 Bedifly CRM provides sign-in, separated client workspaces, lead and pipeline management, team invitations, follow-ups, activity history, and CSV/Excel reporting.
 
@@ -35,7 +35,7 @@ Lovable Cloud manages the app's authentication and database connection settings.
 
 ## Not included or not yet verified
 
-- Native Meta integrations are not included in Phase 1.
+- Phase 2/3 foundations are present, but Meta OAuth, asset discovery, lead processing, dataset discovery and conversion sending are not implemented or active yet.
 - The automated score derives call-response and interest points from pipeline status; separate call-response and interest events are not recorded.
 - End-to-end multi-client acceptance tests (including two live client accounts, employee invitations, imports into a live tenant, and cross-tenant attempts) require the designated administrator and invited test accounts. Those accounts were not available in this preview session. A 100-row spreadsheet round-trip test passes locally, but it does not verify database import permissions.
 - Rate limiting and adjustable email-confirmation settings were not independently verified.
@@ -50,3 +50,28 @@ oj typecheck -b --noEmit
 The CRM access and spreadsheet utility tests pass. Full multi-client acceptance checks require the confirmed platform administrator and invited client accounts; those accounts were unavailable for this preview verification.
 
 The app is built with TanStack Start, React, TypeScript, Tailwind CSS, and Recharts. Backend access uses Lovable Cloud, generated authenticated browser access, database row policies, and authenticated server functions for invitations.
+
+## Phase 2 and 3 foundations
+
+- The Meta Ads section shows real stored records, honest pending configuration, client synchronization preferences and conversion status.
+- Meta connections have encrypted-token storage columns inaccessible to browser clients. Encryption and OAuth exchange still need implementation.
+- The webhook endpoint is `/api/public/meta/webhook`, not `/api/webhooks/meta`: public callbacks require the public prefix on this hosting platform.
+- GET verifies the Meta challenge; POST verifies the raw-body SHA-256 signature, validates bounded payloads and stores unique leadgen notifications. It does not retrieve leads yet, and there is no active worker or scheduled processor.
+- Leads now retain Meta lead, Page, form, ad account, campaign, ad set and ad identifiers, plus optional fbc/fbp. Raw responses have separate protected storage.
+- Conversion records support QualifiedLead/Purchase, stable deduplication references, original occurrence times, actual purchase value/currency and tenant-scoped consent references. No event is generated or transmitted yet.
+
+### Pending Meta setup
+
+The app needs `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION`, `META_REDIRECT_URI`, `META_WEBHOOK_VERIFY_TOKEN` and an app-issued `META_TOKEN_ENCRYPTION_KEY` before live authorization can be enabled. Store credentials securely through Lovable, never in source files. No values have been requested or stored yet. Set the Graph version to one verified as supported for your Developer App; no version is hardcoded.
+
+Each client must authorize their own Meta assets; a workspace-owner connector is not a substitute. No matching Meta App User Connector is available in the inspected workspace catalogue, so custom client OAuth will use the Developer App requested in the brief.
+
+After publishing, configure the exact HTTPS callback and `/api/public/meta/webhook` address in your Meta Developer App, subscribe to Page leadgen events and separately subscribe each selected Page. The callback route is not yet implemented, so do not configure it as working yet. The verification token must be identical in Meta and the app's secure form.
+
+Expected permissions: `leads_retrieval`, `pages_show_list`, `pages_read_engagement`, and `ads_read`; Page webhook subscription may require `pages_manage_metadata`. Request `business_management` only if the confirmed business discovery feature needs it. Do not request `ads_management` for read-only lead integration. Confirm current permissions and Advanced Access/App Review requirements against your Developer App before authorization implementation.
+
+For conversion reporting, retain customer consent evidence, verify Events Manager dataset restrictions, accept Meta Business Tools Terms, disclose Meta sharing, and provide a customer withdrawal/contact route. Do not send sensitive or ineligible data. No Pixel is installed on the private CRM.
+
+### Verification limits
+
+Tests cover webhook signatures, notification deduplication, selected assignment validation and conversion-permission gates. These are fixtures, not proof of real Facebook connectivity. Live OAuth, asset discovery, lead import, notification delivery, retry processing, tenant isolation and Meta conversion receipt remain unverified.

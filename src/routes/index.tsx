@@ -66,6 +66,7 @@ import { hasCrmWorkspaceAccess, isWithinDateFilter, resolveWorkspaceSelection } 
 import { createXlsx, normalizeHeader, normalizeLeadPhone, parseCsv, parseLeadDate, parseXlsx } from "@/lib/crm-spreadsheets";
 import type { Database } from "@/integrations/supabase/types";
 import bediflyLogo from "@/assets/bedifly-logo-trim.png.asset.json";
+import { MetaIntegration } from "@/components/meta-integration";
 
 type Organization = Database["public"]["Tables"]["organizations"]["Row"];
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
@@ -79,7 +80,7 @@ type Member = Database["public"]["Tables"]["organization_members"]["Row"] & {
 type Role = Database["public"]["Tables"]["user_roles"]["Row"];
 type ScoringRow = Database["public"]["Tables"]["lead_scoring_settings"]["Row"];
 type ScoringValues = Pick<ScoringRow, "valid_phone_points" | "valid_email_points" | "responded_call_points" | "expressed_interest_points" | "meeting_scheduled_points" | "converted_points" | "invalid_number_points" | "duplicate_points" | "junk_lead_points">;
-type PageKey = "overview" | "clients" | "leads" | "pipeline" | "team" | "follow-ups" | "reports" | "activity" | "settings";
+type PageKey = "overview" | "clients" | "leads" | "pipeline" | "team" | "follow-ups" | "reports" | "activity" | "settings" | "meta";
 
 const STATUSES = [
   "New Lead", "Contacted", "Interested", "Qualified", "Meeting Scheduled", "Negotiation", "Converted",
@@ -652,6 +653,7 @@ function BediflyCRM() {
         { key: "overview" as const, label: "Overview", icon: LayoutDashboard }, { key: "clients" as const, label: "Clients", icon: Building2 },
         { key: "leads" as const, label: "All leads", icon: UsersRound }, { key: "team" as const, label: "Team", icon: Users },
         { key: "reports" as const, label: "Reports", icon: BarChart3 }, { key: "activity" as const, label: "Activity logs", icon: Activity },
+        { key: "meta" as const, label: "Meta Integrations", icon: Target },
         { key: "settings" as const, label: "Settings", icon: Settings2 },
       ]
     : [
@@ -660,6 +662,7 @@ function BediflyCRM() {
         { key: "pipeline" as const, label: "Pipeline", icon: Workflow }, { key: "follow-ups" as const, label: "Follow-ups", icon: CalendarClock },
         { key: "team" as const, label: role === "sales_exec" ? "My performance" : "Sales team", icon: Users },
         { key: "reports" as const, label: "Reports", icon: BarChart3 }, { key: "settings" as const, label: "Settings", icon: Settings2 },
+        ...(role !== "sales_exec" ? [{ key: "meta" as const, label: "Meta Ads", icon: Target }] : []),
       ];
 
   if (!authReady) return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground"><LoaderCircle className="mr-2 size-4 animate-spin" /> Loading Bedifly CRM</div>;
@@ -696,7 +699,7 @@ function BediflyCRM() {
         </nav>
         <div className="mx-4 mb-4 rounded-md bg-accent/50 p-3">
           <div className="flex items-center gap-2 text-xs font-medium text-foreground"><CircleHelp className="size-4 text-primary" /> Bedifly CRM</div>
-          <p className="mt-1 text-[11px] text-muted-foreground">Phase 1 workspace</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Sales workspace</p>
         </div>
         <div className="border-t border-sidebar-border px-4 py-4">
           <button onClick={signOut} className="crm-nav-item flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm"><LogOut className="size-4" /> Sign out</button>
@@ -733,6 +736,7 @@ function BediflyCRM() {
           {page === "reports" && <ReportsPage leads={scopedLeads} members={members} onExport={(rows, name) => void exportLeads(rows, name)} onExportExcel={(rows, name) => void exportLeads(rows, name, "xlsx")} />}
           {page === "activity" && <ActivityPage leads={scopedLeads} stats={stats} organizations={organizations} />}
           {page === "settings" && <SettingsPage organization={activeOrganization} statuses={statusOptions} customStatus={customStatus} setCustomStatus={setCustomStatus} onAddStatus={addStatus} scoringValues={scoringValues} setScoringValues={setScoringValues} onSaveScoring={saveScoringSettings} isMaster={isMaster} canManageSettings={role !== "sales_exec"} saving={saving} />}
+          {page === "meta" && role !== "sales_exec" && <MetaIntegration organizationId={isMaster ? activeOrganizationId || null : activeOrganization?.id ?? null} members={members} statuses={statusOptions} />}
         </div>
       </main>
 
@@ -1116,7 +1120,7 @@ function downloadCsv(rows: unknown[][], fileName: string) {
 function memberName(member: Member | undefined, fallback: string) { return member?.full_name || member?.email || fallback.slice(0, 8); }
 function initials(value: string) { return value.trim().split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "B"; }
 function formatRole(role: string) { return role === "platform_admin" ? "Super Admin" : role === "client_admin" ? "Client Admin" : role === "sales_exec" ? "Sales Executive" : "Workspace member"; }
-function pageTitle(page: PageKey, isMaster: boolean) { const titles: Record<PageKey, string> = { overview: isMaster ? "Master overview" : "Workspace dashboard", clients: "Client management", leads: "Lead management", pipeline: "Sales pipeline", team: "Sales team", "follow-ups": "Follow-up management", reports: "Reports & exports", activity: "Platform activity", settings: "Workspace settings" }; return titles[page]; }
+function pageTitle(page: PageKey, isMaster: boolean) { const titles: Record<PageKey, string> = { overview: isMaster ? "Master overview" : "Workspace dashboard", clients: "Client management", leads: "Lead management", pipeline: "Sales pipeline", team: "Sales team", "follow-ups": "Follow-up management", reports: "Reports & exports", activity: "Platform activity", settings: "Workspace settings", meta: "Meta Ads integrations" }; return titles[page]; }
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"; }
 function formatDate(value: string) { return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
 function formatDateTime(value: string) { return new Date(value).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }

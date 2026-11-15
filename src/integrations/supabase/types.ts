@@ -308,6 +308,8 @@ export type Database = {
           created_by: string | null
           deleted_at: string | null
           email: string | null
+          fbc: string | null
+          fbp: string | null
           follow_up_at: string | null
           form_name: string | null
           full_name: string
@@ -315,6 +317,13 @@ export type Database = {
           lead_created_at: string
           lead_score: number
           lead_value: number | null
+          meta_ad_account_id: string | null
+          meta_ad_id: string | null
+          meta_ad_set_id: string | null
+          meta_campaign_id: string | null
+          meta_form_id: string | null
+          meta_lead_id: string | null
+          meta_page_id: string | null
           organization_id: string
           phone: string | null
           quality: string
@@ -336,6 +345,8 @@ export type Database = {
           created_by?: string | null
           deleted_at?: string | null
           email?: string | null
+          fbc?: string | null
+          fbp?: string | null
           follow_up_at?: string | null
           form_name?: string | null
           full_name: string
@@ -343,6 +354,13 @@ export type Database = {
           lead_created_at?: string
           lead_score?: number
           lead_value?: number | null
+          meta_ad_account_id?: string | null
+          meta_ad_id?: string | null
+          meta_ad_set_id?: string | null
+          meta_campaign_id?: string | null
+          meta_form_id?: string | null
+          meta_lead_id?: string | null
+          meta_page_id?: string | null
           organization_id: string
           phone?: string | null
           quality?: string
@@ -364,6 +382,8 @@ export type Database = {
           created_by?: string | null
           deleted_at?: string | null
           email?: string | null
+          fbc?: string | null
+          fbp?: string | null
           follow_up_at?: string | null
           form_name?: string | null
           full_name?: string
@@ -371,6 +391,13 @@ export type Database = {
           lead_created_at?: string
           lead_score?: number
           lead_value?: number | null
+          meta_ad_account_id?: string | null
+          meta_ad_id?: string | null
+          meta_ad_set_id?: string | null
+          meta_campaign_id?: string | null
+          meta_form_id?: string | null
+          meta_lead_id?: string | null
+          meta_page_id?: string | null
           organization_id?: string
           phone?: string | null
           quality?: string
@@ -384,6 +411,436 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_assets: {
+        Row: {
+          asset_type: string
+          connection_id: string
+          created_at: string
+          external_id: string
+          id: string
+          metadata: Json
+          name: string
+          organization_id: string
+          parent_external_id: string | null
+          selected: boolean
+          webhook_subscribed: boolean
+        }
+        Insert: {
+          asset_type: string
+          connection_id: string
+          created_at?: string
+          external_id: string
+          id?: string
+          metadata?: Json
+          name: string
+          organization_id: string
+          parent_external_id?: string | null
+          selected?: boolean
+          webhook_subscribed?: boolean
+        }
+        Update: {
+          asset_type?: string
+          connection_id?: string
+          created_at?: string
+          external_id?: string
+          id?: string
+          metadata?: Json
+          name?: string
+          organization_id?: string
+          parent_external_id?: string | null
+          selected?: boolean
+          webhook_subscribed?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_assets_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "meta_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_assets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_connections: {
+        Row: {
+          connected_at: string | null
+          connection_status: string
+          created_at: string
+          encrypted_access_token: string | null
+          facebook_name: string | null
+          granted_permissions: string[]
+          id: string
+          last_sync_at: string | null
+          meta_user_id: string | null
+          organization_id: string
+          token_expires_at: string | null
+        }
+        Insert: {
+          connected_at?: string | null
+          connection_status?: string
+          created_at?: string
+          encrypted_access_token?: string | null
+          facebook_name?: string | null
+          granted_permissions?: string[]
+          id?: string
+          last_sync_at?: string | null
+          meta_user_id?: string | null
+          organization_id: string
+          token_expires_at?: string | null
+        }
+        Update: {
+          connected_at?: string | null
+          connection_status?: string
+          created_at?: string
+          encrypted_access_token?: string | null
+          facebook_name?: string | null
+          granted_permissions?: string[]
+          id?: string
+          last_sync_at?: string | null
+          meta_user_id?: string | null
+          organization_id?: string
+          token_expires_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_consent_evidence: {
+        Row: {
+          advertising_accepted: boolean
+          evidence_reference: string
+          id: string
+          lead_id: string
+          matching_accepted: boolean
+          notice_version: string
+          organization_id: string
+          recorded_at: string
+          region: string
+          withdrawn_at: string | null
+        }
+        Insert: {
+          advertising_accepted: boolean
+          evidence_reference: string
+          id?: string
+          lead_id: string
+          matching_accepted?: boolean
+          notice_version: string
+          organization_id: string
+          recorded_at?: string
+          region: string
+          withdrawn_at?: string | null
+        }
+        Update: {
+          advertising_accepted?: boolean
+          evidence_reference?: string
+          id?: string
+          lead_id?: string
+          matching_accepted?: boolean
+          notice_version?: string
+          organization_id?: string
+          recorded_at?: string
+          region?: string
+          withdrawn_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_consent_evidence_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_consent_evidence_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_conversion_events: {
+        Row: {
+          action_source: string
+          attempts: number
+          consent_id: string | null
+          created_at: string
+          currency: string | null
+          error_code: string | null
+          event_name: string
+          id: string
+          lead_id: string
+          next_attempt_at: string | null
+          occurred_at: string
+          organization_id: string
+          outcome_reference: string
+          provider_received_at: string | null
+          status: string
+          value: number | null
+        }
+        Insert: {
+          action_source: string
+          attempts?: number
+          consent_id?: string | null
+          created_at?: string
+          currency?: string | null
+          error_code?: string | null
+          event_name: string
+          id?: string
+          lead_id: string
+          next_attempt_at?: string | null
+          occurred_at: string
+          organization_id: string
+          outcome_reference: string
+          provider_received_at?: string | null
+          status?: string
+          value?: number | null
+        }
+        Update: {
+          action_source?: string
+          attempts?: number
+          consent_id?: string | null
+          created_at?: string
+          currency?: string | null
+          error_code?: string | null
+          event_name?: string
+          id?: string
+          lead_id?: string
+          next_attempt_at?: string | null
+          occurred_at?: string
+          organization_id?: string
+          outcome_reference?: string
+          provider_received_at?: string | null
+          status?: string
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_conversion_events_consent_id_organization_id_lead_id_fkey"
+            columns: ["consent_id", "organization_id", "lead_id"]
+            isOneToOne: false
+            referencedRelation: "meta_consent_evidence"
+            referencedColumns: ["id", "organization_id", "lead_id"]
+          },
+          {
+            foreignKeyName: "meta_conversion_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_conversion_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_integration_settings: {
+        Row: {
+          assignment_mode: string
+          auto_sync_enabled: boolean
+          conversion_enabled: boolean
+          dataset_id: string | null
+          default_quality: string
+          default_status: string
+          duplicate_handling: string
+          executive_ids: string[]
+          notifications_enabled: boolean
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          assignment_mode?: string
+          auto_sync_enabled?: boolean
+          conversion_enabled?: boolean
+          dataset_id?: string | null
+          default_quality?: string
+          default_status?: string
+          duplicate_handling?: string
+          executive_ids?: string[]
+          notifications_enabled?: boolean
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          assignment_mode?: string
+          auto_sync_enabled?: boolean
+          conversion_enabled?: boolean
+          dataset_id?: string | null
+          default_quality?: string
+          default_status?: string
+          duplicate_handling?: string
+          executive_ids?: string[]
+          notifications_enabled?: boolean
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_integration_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_lead_responses: {
+        Row: {
+          created_at: string
+          field_data: Json
+          lead_id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          field_data: Json
+          lead_id: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          field_data?: Json
+          lead_id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_lead_responses_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_lead_responses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_sync_logs: {
+        Row: {
+          connection_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          organization_id: string
+          records_processed: number
+          status: string
+          sync_type: string
+        }
+        Insert: {
+          connection_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          organization_id: string
+          records_processed?: number
+          status: string
+          sync_type: string
+        }
+        Update: {
+          connection_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          organization_id?: string
+          records_processed?: number
+          status?: string
+          sync_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_sync_logs_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "meta_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_sync_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_webhook_events: {
+        Row: {
+          attempts: number
+          error_code: string | null
+          form_id: string
+          id: string
+          leadgen_id: string
+          lease_until: string | null
+          next_attempt_at: string
+          organization_id: string | null
+          page_id: string
+          payload: Json
+          processed_at: string | null
+          processing_status: string
+          received_at: string
+        }
+        Insert: {
+          attempts?: number
+          error_code?: string | null
+          form_id: string
+          id?: string
+          leadgen_id: string
+          lease_until?: string | null
+          next_attempt_at?: string
+          organization_id?: string | null
+          page_id: string
+          payload: Json
+          processed_at?: string | null
+          processing_status?: string
+          received_at?: string
+        }
+        Update: {
+          attempts?: number
+          error_code?: string | null
+          form_id?: string
+          id?: string
+          leadgen_id?: string
+          lease_until?: string | null
+          next_attempt_at?: string
+          organization_id?: string | null
+          page_id?: string
+          payload?: Json
+          processed_at?: string | null
+          processing_status?: string
+          received_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_webhook_events_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"

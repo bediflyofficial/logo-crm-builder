@@ -1,0 +1,15 @@
+REVOKE ALL ON public.meta_connections FROM anon,authenticated;
+GRANT SELECT(id,organization_id,meta_user_id,facebook_name,token_expires_at,connection_status,granted_permissions,connected_at,last_sync_at,created_at) ON public.meta_connections TO authenticated;
+REVOKE ALL ON public.meta_webhook_events FROM anon,authenticated;
+REVOKE ALL ON public.meta_consent_evidence FROM anon,authenticated;
+GRANT SELECT ON public.meta_consent_evidence TO authenticated;
+REVOKE ALL ON public.meta_conversion_events FROM anon,authenticated;
+GRANT SELECT ON public.meta_conversion_events TO authenticated;
+REVOKE ALL ON public.meta_lead_responses FROM anon,authenticated;
+GRANT SELECT ON public.meta_lead_responses TO authenticated;
+REVOKE ALL ON public.meta_assets FROM anon,authenticated;
+GRANT SELECT ON public.meta_assets TO authenticated;
+REVOKE ALL ON public.meta_sync_logs FROM anon,authenticated;
+GRANT SELECT ON public.meta_sync_logs TO authenticated;
+REVOKE ALL ON public.meta_integration_settings FROM anon,authenticated;
+GRANT SELECT,INSERT,UPDATE ON public.meta_integration_settings TO authenticated;

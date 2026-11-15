@@ -33,3 +33,6 @@ use the editor.
 - Keep workspace-access eligibility in a shared pure predicate so the sign-in boundary and its tests enforce the same rule.
 - Keep spreadsheet parsing and generation browser-only via on-demand imports so spreadsheet libraries do not enter server rendering.
 - Keep lead score rules workspace-specific in the database and recalculate scores with database triggers so all clients use the same authoritative rules.
+- Keep Meta credentials in server-only encrypted columns with no browser column grants; this prevents tenant admins from reading tokens.
+- Receive Meta leadgen callbacks under /api/public/meta/webhook and persist a deduplicated inbox before acknowledging; external callbacks cannot depend on a browser session.
+- Keep conversion sending disabled until dataset eligibility and event-time/current customer permission are verified; receiving a CRM lead is not consent to send conversions.
