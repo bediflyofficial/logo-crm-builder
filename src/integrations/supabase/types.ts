@@ -702,6 +702,7 @@ export type Database = {
       }
       meta_integration_settings: {
         Row: {
+          assignment_cursor: number
           assignment_mode: string
           auto_sync_enabled: boolean
           conversion_enabled: boolean
@@ -715,6 +716,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assignment_cursor?: number
           assignment_mode?: string
           auto_sync_enabled?: boolean
           conversion_enabled?: boolean
@@ -728,6 +730,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assignment_cursor?: number
           assignment_mode?: string
           auto_sync_enabled?: boolean
           conversion_enabled?: boolean
@@ -1110,6 +1113,40 @@ export type Database = {
       can_view_lead: {
         Args: { _assigned_to: string; _organization_id: string }
         Returns: boolean
+      }
+      claim_meta_lead_jobs: {
+        Args: { _limit?: number }
+        Returns: {
+          attempts: number
+          error_code: string | null
+          form_id: string
+          id: string
+          leadgen_id: string
+          lease_until: string | null
+          next_attempt_at: string
+          organization_id: string | null
+          page_id: string
+          payload: Json
+          processed_at: string | null
+          processing_status: string
+          received_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "meta_webhook_events"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ingest_meta_lead: {
+        Args: {
+          _attempt: number
+          _fields: Json
+          _job_id: string
+          _lead: Json
+          _organization_id: string
+        }
+        Returns: string
       }
       is_org_admin: { Args: { _organization_id: string }; Returns: boolean }
       is_org_member: { Args: { _organization_id: string }; Returns: boolean }

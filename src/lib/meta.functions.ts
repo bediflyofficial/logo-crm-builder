@@ -26,7 +26,7 @@ export const getMetaOverview = createServerFn({ method: "POST" })
     const settings = data.organizationId ? await context.supabase.from("meta_integration_settings").select("*").eq("organization_id", data.organizationId).maybeSingle() : null;
     if (settings?.error) throw new Error("Meta settings could not be loaded.");
     const required = ["META_APP_ID", "META_APP_SECRET", "META_GRAPH_API_VERSION", "META_REDIRECT_URI", "META_WEBHOOK_VERIFY_TOKEN", "META_TOKEN_ENCRYPTION_KEY"];
-    return { connections: connections.data ?? [], assets: assets.data ?? [], logs: logs.data ?? [], events: events.data ?? [], settings: settings?.data ?? null, missingConfiguration: required.filter((name) => !process.env[name]), oauthImplemented: true, processorImplemented: false };
+    return { connections: connections.data ?? [], assets: assets.data ?? [], logs: logs.data ?? [], events: events.data ?? [], settings: settings?.data ?? null, missingConfiguration: required.filter((name) => !process.env[name]), oauthImplemented: true, processorImplemented: true };
   });
 
 export const saveMetaSettings = createServerFn({ method: "POST" })
@@ -42,7 +42,11 @@ export const saveMetaSettings = createServerFn({ method: "POST" })
       const { data: roles, error: rolesError } = await context.supabase.from("user_roles").select("user_id").eq("organization_id", data.organizationId).eq("role", "sales_exec").in("user_id", data.executiveIds);
       if (error || rolesError || data.executiveIds.some((id) => !members?.some((member) => member.user_id === id) || !roles?.some((role) => role.user_id === id))) throw new Error("Choose active sales executives from this workspace.");
     }
-    const { error } = await context.supabase.from("meta_integration_settings").upsert({ organization_id: data.organizationId, default_status: data.defaultStatus, default_quality: data.defaultQuality, assignment_mode: data.assignmentMode, executive_ids: data.executiveIds, duplicate_handling: data.duplicateHandling, notifications_enabled: data.notificationsEnabled, updated_at: new Date().toISOString() });
+    if (data.autoSyncEnabled) {
+      const { data: forms, error: formError } = await context.supabase.from("meta_assets").select("id").eq("organization_id", data.organizationId).eq("asset_type", "form").eq("selected", true).limit(1);
+      if (formError || !forms?.length || !process.env["META_WEBHOOK_VERIFY_TOKEN"]) throw new Error("Select a subscribed Page and lead form and configure the Meta webhook first.");
+    }
+    const { error } = await context.supabase.from("meta_integration_settings").upsert({ organization_id: data.organizationId, auto_sync_enabled: data.autoSyncEnabled, default_status: data.defaultStatus, default_quality: data.defaultQuality, assignment_mode: data.assignmentMode, executive_ids: data.executiveIds, duplicate_handling: data.duplicateHandling, notifications_enabled: data.notificationsEnabled, updated_at: new Date().toISOString() });
     if (error) throw new Error("Meta settings could not be saved.");
     return { saved: true };
   });

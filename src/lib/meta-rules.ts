@@ -8,6 +8,7 @@ export const metaSettingsSchema = z.object({
   executiveIds: z.array(z.string().uuid()).max(100),
   duplicateHandling: z.enum(["keep_separate", "flag"]),
   notificationsEnabled: z.boolean(),
+  autoSyncEnabled: z.boolean().default(false),
 }).superRefine((value, context) => {
   if (value.assignmentMode === "fixed" && value.executiveIds.length !== 1) {
     context.addIssue({ code: "custom", message: "Choose one sales executive for fixed assignment.", path: ["executiveIds"] });
@@ -41,4 +42,16 @@ export function extractLeadNotifications(input: unknown) {
     notifications.push({ leadgen_id: lead, page_id: page, form_id: form });
   }
   return [...new Map(notifications.map((item) => [item.leadgen_id, item])).values()];
+}
+
+export const metaLeadSchema = z.object({ id: z.string().regex(/^\d+$/), created_time: z.string().refine((value) => Number.isFinite(Date.parse(value))), field_data: z.array(z.object({ name: z.string().max(200), values: z.array(z.string().max(10000)).max(100) })).max(200), ad_id: z.string().regex(/^\d+$/).optional(), form_id: z.string().regex(/^\d+$/).optional() });
+
+export function mapMetaLead(input: unknown) {
+  const lead = metaLeadSchema.parse(input);
+  const fields = new Map(lead.field_data.map((field) => [field.name.toLowerCase(), field.values[0] ?? ""]));
+  return { id: lead.id, created_time: new Date(lead.created_time).toISOString(), full_name: fields.get("full_name") || [fields.get("first_name"), fields.get("last_name")].filter(Boolean).join(" ") || "Unnamed Meta lead", phone: fields.get("phone_number") ?? "", email: fields.get("email") ?? "", city: fields.get("city") ?? "", state: fields.get("state") ?? "", country: fields.get("country") ?? "", ...(lead.ad_id ? { ad_id: lead.ad_id } : {}) };
+}
+
+export function metaRetryDelay(attempt: number, rateLimited: boolean) {
+  return rateLimited ? 15 * 60_000 : Math.min(60 * 60_000, 60_000 * 2 ** Math.max(0, attempt - 1));
 }

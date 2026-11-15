@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX meta_forms_single_selected_workspace ON public.meta_assets(external_id) WHERE asset_type = 'form' AND selected = true;

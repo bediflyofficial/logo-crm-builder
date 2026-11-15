@@ -12,11 +12,14 @@
 - [x] Add tenant-isolated Meta connections, selected assets, sync settings and durable webhook inbox.
 - [x] Add Meta integration setup and health screens without simulated connection states.
 - [x] Implement verified webhook reception and deduplicated job storage.
-- [ ] Implement client-owned OAuth and asset discovery, with secure workspace-owned connections and asset selection.
-- [ ] Implement lead retrieval, assignment and retry processing; live activation requires Meta Developer App configuration.
+- [x] Implement client-owned OAuth, encrypted Page credentials, Page/ad-account/Instagram/form/dataset discovery and asset selection.
+- [x] Implement selected-form lead retrieval, atomic workspace assignment, notifications and retry processing.
+- [ ] Configure Meta Developer App settings and verify the scheduled processor with real Meta leads; blocked on credentials and publishing.
+- [ ] Finish Business Portfolio discovery, manual historical synchronization, campaign attribution enrichment and detailed Meta lead reports.
 - [ ] Verify real Meta connection, selected-form synchronization and two-client isolation.
 
 ## Phase 3 — Conversion reporting
 - [x] Add dataset settings, consent evidence and a deduplicated conversion outbox for QualifiedLead and Purchase.
-- [ ] Implement consent-checked event transmission and dataset discovery; requires authorized Meta assets and configuration.
+- [x] Implement dataset discovery through accessible ad accounts.
+- [ ] Implement consent-checked event transmission; requires verified dataset eligibility, customer consent workflow and Meta configuration.
 - [ ] Verify Meta receipt, event deduplication and withdrawal behavior with test events.

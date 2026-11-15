@@ -35,7 +35,7 @@ Lovable Cloud manages the app's authentication and database connection settings.
 
 ## Not included or not yet verified
 
-- Phase 2/3 foundations are present, but Meta OAuth, asset discovery, lead processing, dataset discovery and conversion sending are not implemented or active yet.
+- Client-owned Meta OAuth, Page/ad account/Instagram/form/dataset discovery, asset selection and scheduled lead processing are implemented but await Meta App configuration and live verification. Business Portfolio discovery, manual historical sync, campaign metadata enrichment, detailed Meta reporting and conversion sending remain unfinished.
 - The automated score derives call-response and interest points from pipeline status; separate call-response and interest events are not recorded.
 - End-to-end multi-client acceptance tests (including two live client accounts, employee invitations, imports into a live tenant, and cross-tenant attempts) require the designated administrator and invited test accounts. Those accounts were not available in this preview session. A 100-row spreadsheet round-trip test passes locally, but it does not verify database import permissions.
 - Rate limiting and adjustable email-confirmation settings were not independently verified.
@@ -54,24 +54,26 @@ The app is built with TanStack Start, React, TypeScript, Tailwind CSS, and Recha
 ## Phase 2 and 3 foundations
 
 - The Meta Ads section shows real stored records, honest pending configuration, client synchronization preferences and conversion status.
-- Meta connections have encrypted-token storage columns inaccessible to browser clients. Encryption and OAuth exchange still need implementation.
+- Meta connections use AES-256-GCM encrypted tokens with no browser grants. OAuth state is single-use, expires after ten minutes and is bound to the authenticated user and workspace. The popup callback returns only the authorization code; the authenticated opener exchanges and stores it.
 - The webhook endpoint is `/api/public/meta/webhook`, not `/api/webhooks/meta`: public callbacks require the public prefix on this hosting platform.
-- GET verifies the Meta challenge; POST verifies the raw-body SHA-256 signature, validates bounded payloads and stores unique leadgen notifications. It does not retrieve leads yet, and there is no active worker or scheduled processor.
+- GET verifies the Meta challenge; POST verifies the raw-body SHA-256 signature, validates bounded payloads and stores unique leadgen notifications. The scheduled processor claims jobs with leases, retrieves selected-form leads, and atomically saves leads, raw responses, assignments and notifications. Automatic sync defaults off; suspended clients and unselected forms are skipped. Retries use bounded exponential backoff and a fifteen-minute delay for rate limits.
 - Leads now retain Meta lead, Page, form, ad account, campaign, ad set and ad identifiers, plus optional fbc/fbp. Raw responses have separate protected storage.
 - Conversion records support QualifiedLead/Purchase, stable deduplication references, original occurrence times, actual purchase value/currency and tenant-scoped consent references. No event is generated or transmitted yet.
 
 ### Pending Meta setup
 
-The app needs `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION`, `META_REDIRECT_URI`, `META_WEBHOOK_VERIFY_TOKEN` and an app-issued `META_TOKEN_ENCRYPTION_KEY` before live authorization can be enabled. Store credentials securely through Lovable, never in source files. No values have been requested or stored yet. Set the Graph version to one verified as supported for your Developer App; no version is hardcoded.
+The app needs `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION`, `META_REDIRECT_URI` and `META_WEBHOOK_VERIFY_TOKEN` before live synchronization can be enabled. The app-only `META_TOKEN_ENCRYPTION_KEY` has been securely generated. Store credentials through Lovable, never in source files. Set the Graph version to one verified as supported for your Developer App; no version is hardcoded.
 
 Each client must authorize their own Meta assets; a workspace-owner connector is not a substitute. No matching Meta App User Connector is available in the inspected workspace catalogue, so custom client OAuth will use the Developer App requested in the brief.
 
-After publishing, configure the exact HTTPS callback and `/api/public/meta/webhook` address in your Meta Developer App, subscribe to Page leadgen events and separately subscribe each selected Page. The callback route is not yet implemented, so do not configure it as working yet. The verification token must be identical in Meta and the app's secure form.
+After publishing, configure the exact same-origin HTTPS `/api/public/meta/callback` callback and `/api/public/meta/webhook` address in your Meta Developer App. Subscribe the App to Page leadgen events. Selecting each Page in CRM separately subscribes that Page. Select its forms and enable automatic sync. The verification token must be identical in Meta and the app's secure form.
 
-Expected permissions: `leads_retrieval`, `pages_show_list`, `pages_read_engagement`, and `ads_read`; Page webhook subscription may require `pages_manage_metadata`. Request `business_management` only if the confirmed business discovery feature needs it. Do not request `ads_management` for read-only lead integration. Confirm current permissions and Advanced Access/App Review requirements against your Developer App before authorization implementation.
+Requested permissions: `leads_retrieval`, `pages_show_list`, `pages_read_engagement`, `pages_manage_ads` (form retrieval), `pages_manage_metadata` (Page webhook subscription), and `ads_read`. Business Portfolio discovery is pending; `business_management` and `ads_management` are not requested. Confirm current permissions and Advanced Access/App Review requirements against your Developer App before live activation.
 
 For conversion reporting, retain customer consent evidence, verify Events Manager dataset restrictions, accept Meta Business Tools Terms, disclose Meta sharing, and provide a customer withdrawal/contact route. Do not send sensitive or ineligible data. No Pixel is installed on the private CRM.
 
 ### Verification limits
 
-Tests cover webhook signatures, notification deduplication, selected assignment validation and conversion-permission gates. These are fixtures, not proof of real Facebook connectivity. Live OAuth, asset discovery, lead import, notification delivery, retry processing, tenant isolation and Meta conversion receipt remain unverified.
+31 automated tests pass, including webhook signatures, notification deduplication, encrypted credentials, lead mapping, retry delays, default-disabled sync, assignment validation and conversion-permission gates. These are fixtures, not proof of real Facebook connectivity. A signed-in check reached the invitation-needed screen because the requesting account has no workspace; the integration controls and real lead imports remain unverified. Invalid callbacks return 400 and an unconfigured webhook returns 503. Live OAuth, asset discovery, lead import, notification delivery, retry processing, tenant isolation and Meta conversion receipt remain unverified.
+
+The managed `bedifly-meta-lead-sync` schedule calls `/api/public/meta/process` every minute. It uses managed cron authentication, returns no lead details, and does not claim jobs while Meta configuration is missing. The published app must expose this endpoint before scheduled processing can run. Complete the Meta App setup before calling this a live integration.

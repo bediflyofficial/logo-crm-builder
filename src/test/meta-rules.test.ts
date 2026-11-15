@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
-import { extractLeadNotifications, canSendMetaConversion, metaSettingsSchema } from "@/lib/meta-rules";
+import { extractLeadNotifications, canSendMetaConversion, metaSettingsSchema, mapMetaLead, metaRetryDelay } from "@/lib/meta-rules";
 import { verifyMetaSignature } from "@/lib/meta-webhook.server";
 
 describe("Meta webhook security", () => {
@@ -32,3 +32,14 @@ describe("Conversion permission", () => {
 it("fixed assignment requires exactly one executive", () => {
   expect(metaSettingsSchema.safeParse({ organizationId: "00000000-0000-4000-8000-000000000001", defaultStatus: "New Lead", defaultQuality: "Warm", assignmentMode: "fixed", executiveIds: [], duplicateHandling: "flag", notificationsEnabled: true }).success).toBe(false);
 });
+
+it("maps real Meta form fields and preserves the original lead time", () => {
+  expect(mapMetaLead({ id: "123", created_time: "2026-11-15T10:00:00Z", field_data: [{ name: "full_name", values: ["Test Lead"] }, { name: "phone_number", values: ["+919876543210"] }, { name: "email", values: ["test@example.com"] }] })).toMatchObject({ id: "123", full_name: "Test Lead", phone: "+919876543210", email: "test@example.com", created_time: "2026-11-15T10:00:00.000Z" });
+});
+it("does not fabricate missing advertising attribution", () => expect(mapMetaLead({ id: "123", created_time: "2026-11-15T10:00:00Z", field_data: [] })).not.toHaveProperty("ad_id"));
+it("backs off temporary failures and waits fifteen minutes after rate limits", () => {
+  expect(metaRetryDelay(1, false)).toBe(60000);
+  expect(metaRetryDelay(2, false)).toBe(120000);
+  expect(metaRetryDelay(1, true)).toBe(900000);
+});
+it("defaults automatic synchronization to disabled", () => expect(metaSettingsSchema.parse({ organizationId: "00000000-0000-4000-8000-000000000001", defaultStatus: "New Lead", defaultQuality: "Warm", assignmentMode: "manual", executiveIds: [], duplicateHandling: "flag", notificationsEnabled: true }).autoSyncEnabled).toBe(false));

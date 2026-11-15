@@ -36,3 +36,6 @@ use the editor.
 - Keep Meta credentials in server-only encrypted columns with no browser column grants; this prevents tenant admins from reading tokens.
 - Receive Meta leadgen callbacks under /api/public/meta/webhook and persist a deduplicated inbox before acknowledging; external callbacks cannot depend on a browser session.
 - Keep conversion sending disabled until dataset eligibility and event-time/current customer permission are verified; receiving a CRM lead is not consent to send conversions.
+- Complete custom Meta OAuth in the authenticated opener using a single-use state bound to user and organization; callbacks never require or receive the app session.
+- Store Page credentials separately from browser-readable assets, encrypted with authenticated encryption; safe asset metadata uses an explicit allowlist.
+- Claim Meta lead jobs with database leases and save leads, round-robin assignment, raw responses and notifications in one database transaction to prevent duplicate or partial imports.
