@@ -736,7 +736,7 @@ function BediflyCRM() {
           {page === "reports" && <ReportsPage leads={scopedLeads} members={members} onExport={(rows, name) => void exportLeads(rows, name)} onExportExcel={(rows, name) => void exportLeads(rows, name, "xlsx")} />}
           {page === "activity" && <ActivityPage leads={scopedLeads} stats={stats} organizations={organizations} />}
           {page === "settings" && <SettingsPage organization={activeOrganization} statuses={statusOptions} customStatus={customStatus} setCustomStatus={setCustomStatus} onAddStatus={addStatus} scoringValues={scoringValues} setScoringValues={setScoringValues} onSaveScoring={saveScoringSettings} isMaster={isMaster} canManageSettings={role !== "sales_exec"} saving={saving} />}
-          {page === "meta" && role !== "sales_exec" && <MetaIntegration organizationId={isMaster ? activeOrganizationId || null : activeOrganization?.id ?? null} members={members} statuses={statusOptions} />}
+          {page === "meta" && role !== "sales_exec" && <MetaIntegration organizationId={isMaster ? activeOrganizationId || null : activeOrganization?.id ?? null} members={members} statuses={statusOptions} onOpenWorkspace={isMaster ? (id) => { setActiveOrganizationId(id); void refresh(id); } : undefined} />}
         </div>
       </main>
 

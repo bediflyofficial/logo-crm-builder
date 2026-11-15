@@ -55,3 +55,19 @@ export function mapMetaLead(input: unknown) {
 export function metaRetryDelay(attempt: number, rateLimited: boolean) {
   return rateLimited ? 15 * 60_000 : Math.min(60 * 60_000, 60_000 * 2 ** Math.max(0, attempt - 1));
 }
+export type CapiStatus = "not_connected" | "configuration_required" | "connected" | "test_successful" | "production_active" | "connection_error";
+export const capiConfigSchema = z.object({
+  organizationId: z.string().uuid(),
+  datasetId: z.string().trim().regex(/^\d{5,20}$/, "Dataset / Pixel ID must be numeric."),
+  accessToken: z.string().trim().max(1000).optional().default(""),
+  testEventCode: z.string().trim().max(64).regex(/^[A-Za-z0-9_-]*$/, "Test event code has invalid characters.").default(""),
+});
+// Status after saving: credentials changed means previous test results no longer apply.
+export function capiStatusAfterSave(hasDataset: boolean, hasToken: boolean): CapiStatus {
+  if (!hasDataset && !hasToken) return "not_connected";
+  return "configuration_required";
+}
+// Production can only be enabled after a real test event was accepted by Meta.
+export function canEnableCapi(status: CapiStatus, hasDataset: boolean, hasToken: boolean) {
+  return hasDataset && hasToken && (status === "test_successful" || status === "production_active");
+}

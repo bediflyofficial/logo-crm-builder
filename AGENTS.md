@@ -39,3 +39,4 @@ use the editor.
 - Complete custom Meta OAuth in the authenticated opener using a single-use state bound to user and organization; callbacks never require or receive the app session.
 - Store Page credentials separately from browser-readable assets, encrypted with authenticated encryption; safe asset metadata uses an explicit allowlist.
 - Claim Meta lead jobs with database leases and save leads, round-robin assignment, raw responses and notifications in one database transaction to prevent duplicate or partial imports.
+- Keep per-workspace Conversions API credentials in a table with no browser grants, reached only through admin-checked server functions; production enabling requires a Meta-accepted test event.

@@ -15,6 +15,12 @@ export function metaConfig() {
   return { appId, appSecret, version, redirectUri, encryptionSecret };
 }
 
+export function graphVersion() {
+  const version = process.env["META_GRAPH_API_VERSION"];
+  if (!version || !/^v\d+\.\d+$/.test(version)) throw new Error("Set META_GRAPH_API_VERSION (for example v21.0) in backend secrets.");
+  return version;
+}
+
 export class MetaApiError extends Error {
   constructor(public status: number, public code: number | undefined, message: string) { super(message); }
 }
@@ -22,7 +28,7 @@ export class MetaApiError extends Error {
 // Custom client-owned OAuth uses the client's token, never a shared builder connection.
 // Authorization headers and token-bearing responses are never logged or returned to the browser.
 export async function metaRequest(path: string, token: string | null, params: Record<string, string> = {}, method = "GET") {
-  const { version } = metaConfig();
+  const version = graphVersion();
   if (!/^[a-zA-Z0-9_\-/]+$/.test(path)) throw new Error("Invalid Meta request path.");
   const url = new URL(`https://graph.facebook.com/${version}/${path}`);
   const headers = new Headers();

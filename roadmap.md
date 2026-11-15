@@ -21,5 +21,6 @@
 ## Phase 3 — Conversion reporting
 - [x] Add dataset settings, consent evidence and a deduplicated conversion outbox for QualifiedLead and Purchase.
 - [x] Implement dataset discovery through accessible ad accounts.
+- [x] Add per-workspace Dataset/CAPI configuration with real connection tests, test events, enable/disconnect and Super Admin delivery monitoring.
 - [ ] Implement consent-checked event transmission; requires verified dataset eligibility, customer consent workflow and Meta configuration.
 - [ ] Verify Meta receipt, event deduplication and withdrawal behavior with test events.

@@ -511,6 +511,56 @@ export type Database = {
           },
         ]
       }
+      meta_capi_configs: {
+        Row: {
+          capi_enabled: boolean
+          dataset_id: string | null
+          encrypted_capi_token: string | null
+          last_error: string | null
+          last_test_event_at: string | null
+          last_tested_at: string | null
+          organization_id: string
+          status: string
+          test_event_code: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          capi_enabled?: boolean
+          dataset_id?: string | null
+          encrypted_capi_token?: string | null
+          last_error?: string | null
+          last_test_event_at?: string | null
+          last_tested_at?: string | null
+          organization_id: string
+          status?: string
+          test_event_code?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          capi_enabled?: boolean
+          dataset_id?: string | null
+          encrypted_capi_token?: string | null
+          last_error?: string | null
+          last_test_event_at?: string | null
+          last_tested_at?: string | null
+          organization_id?: string
+          status?: string
+          test_event_code?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_configs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_connections: {
         Row: {
           connected_at: string | null
