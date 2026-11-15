@@ -42,7 +42,9 @@ export function parseCsv(text: string): string[][] {
 
 export function parseLeadDate(value: string): string | null {
   if (!value) return null;
-  const parsed = new Date(value);
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T12:00:00`)
+    : new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
@@ -71,7 +73,10 @@ export async function createXlsx(rows: unknown[][]): Promise<ArrayBuffer> {
   const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Leads");
-  sheet.addRows(rows);
+  sheet.addRows(rows.map((row) => row.map((value) => {
+    if (typeof value !== "string" || !/^[\s]*[=+@\-]/.test(value)) return value;
+    return `'${value}`;
+  })));
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   sheet.columns = (rows[0] ?? []).map((header, index) => ({

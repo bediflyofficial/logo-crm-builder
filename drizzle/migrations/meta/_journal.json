@@ -50,6 +50,20 @@
       "when": 1794741075012,
       "tag": "0006_respect_suspended_workspace_access",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794742535421,
+      "tag": "0007_lead_scoring_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794742634650,
+      "tag": "0008_rescore_leads_on_scoring_changes",
+      "breakpoints": true
     }
   ]
 }

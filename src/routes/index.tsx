@@ -77,6 +77,8 @@ type Member = Database["public"]["Tables"]["organization_members"]["Row"] & {
   user_roles: { role: Database["public"]["Enums"]["app_role"] }[];
 };
 type Role = Database["public"]["Tables"]["user_roles"]["Row"];
+type ScoringRow = Database["public"]["Tables"]["lead_scoring_settings"]["Row"];
+type ScoringValues = Pick<ScoringRow, "valid_phone_points" | "valid_email_points" | "responded_call_points" | "expressed_interest_points" | "meeting_scheduled_points" | "converted_points" | "invalid_number_points" | "duplicate_points" | "junk_lead_points">;
 type PageKey = "overview" | "clients" | "leads" | "pipeline" | "team" | "follow-ups" | "reports" | "activity" | "settings";
 
 const STATUSES = [
@@ -84,6 +86,22 @@ const STATUSES = [
   "Not Interested", "Invalid Number", "Duplicate", "Junk Lead",
 ];
 const QUALITIES = ["Hot", "Warm", "Cold", "Junk"] as const;
+const DEFAULT_SCORING: ScoringValues = {
+  valid_phone_points: 10, valid_email_points: 5, responded_call_points: 15,
+  expressed_interest_points: 20, meeting_scheduled_points: 25, converted_points: 50,
+  invalid_number_points: -50, duplicate_points: -100, junk_lead_points: -100,
+};
+const SCORING_FIELDS: { key: keyof ScoringValues; label: string; min: number; max: number }[] = [
+  { key: "valid_phone_points", label: "Valid phone number", min: 0, max: 100 },
+  { key: "valid_email_points", label: "Valid email address", min: 0, max: 100 },
+  { key: "responded_call_points", label: "Responded to call", min: 0, max: 100 },
+  { key: "expressed_interest_points", label: "Expressed interest", min: 0, max: 100 },
+  { key: "meeting_scheduled_points", label: "Meeting scheduled", min: 0, max: 100 },
+  { key: "converted_points", label: "Converted", min: 0, max: 100 },
+  { key: "invalid_number_points", label: "Invalid number", min: -100, max: 0 },
+  { key: "duplicate_points", label: "Duplicate", min: -100, max: 0 },
+  { key: "junk_lead_points", label: "Junk lead", min: -100, max: 0 },
+];
 const organizationSchema = z.object({
   name: z.string().trim().min(2, "Enter a company name.").max(120),
   contactPerson: z.string().trim().min(2, "Enter a contact person.").max(120),
@@ -145,6 +163,7 @@ function BediflyCRM() {
   const [notes, setNotes] = useState<LeadNote[]>([]);
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [scoringValues, setScoringValues] = useState<ScoringValues>(DEFAULT_SCORING);
   const [loadingData, setLoadingData] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [page, setPage] = useState<PageKey>("overview");
@@ -237,6 +256,14 @@ function BediflyCRM() {
         accessibleOrganizations.map((organization) => organization.id),
       );
       setActiveOrganizationId(targetId);
+      const scoringResult = targetId
+        ? await supabase.from("lead_scoring_settings").select("*").eq("organization_id", targetId).maybeSingle()
+        : { data: null, error: null };
+      if (scoringResult.error) throw scoringResult.error;
+      if (scoringResult.data) {
+        const { id: _id, organization_id: _organizationId, created_at: _createdAt, updated_at: _updatedAt, ...values } = scoringResult.data;
+        setScoringValues(values);
+      } else setScoringValues(DEFAULT_SCORING);
       const leadQuery = supabase.from("leads").select("*").is("deleted_at", null).order("created_at", { ascending: false });
       const { data: leadRows, error: leadError } = targetId && (!platformRole || scopeLeadsToSelected)
         ? await leadQuery.eq("organization_id", targetId).limit(1000)
@@ -519,6 +546,22 @@ function BediflyCRM() {
     if (error) toast.error(error.message); else { toast.success("Status added to this workspace."); setCustomStatus(""); await refresh(); }
   }
 
+  async function saveScoringSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeOrganization) return;
+    setSaving(true);
+    const { error } = await supabase.from("lead_scoring_settings").upsert({
+      organization_id: activeOrganization.id,
+      ...scoringValues,
+    }, { onConflict: "organization_id" });
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Scoring rules saved. Existing leads have been rescored.");
+      await refresh(activeOrganization.id, true);
+    }
+    setSaving(false);
+  }
+
   async function importCsv(file?: File) {
     if (!file || !activeOrganization || !user) return;
     if (file.size > 5 * 1024 * 1024) { toast.error("Choose a CSV file smaller than 5 MB."); return; }
@@ -689,7 +732,7 @@ function BediflyCRM() {
           {page === "follow-ups" && <FollowUpsPage followUps={activeFollowUps} leads={allLeads} membersById={membersById} onComplete={completeFollowUp} onOpenLead={(id) => { const lead = allLeads.find((row) => row.id === id); if (lead) void openLead(lead); }} />}
           {page === "reports" && <ReportsPage leads={scopedLeads} members={members} onExport={(rows, name) => void exportLeads(rows, name)} onExportExcel={(rows, name) => void exportLeads(rows, name, "xlsx")} />}
           {page === "activity" && <ActivityPage leads={scopedLeads} stats={stats} organizations={organizations} />}
-          {page === "settings" && <SettingsPage organization={activeOrganization} statuses={statusOptions} customStatus={customStatus} setCustomStatus={setCustomStatus} onAddStatus={addStatus} isMaster={isMaster} canManageSettings={role !== "sales_exec"} />}
+          {page === "settings" && <SettingsPage organization={activeOrganization} statuses={statusOptions} customStatus={customStatus} setCustomStatus={setCustomStatus} onAddStatus={addStatus} scoringValues={scoringValues} setScoringValues={setScoringValues} onSaveScoring={saveScoringSettings} isMaster={isMaster} canManageSettings={role !== "sales_exec"} saving={saving} />}
         </div>
       </main>
 
@@ -967,10 +1010,11 @@ function ActivityPage({ leads, stats, organizations }: { leads: Lead[]; stats: R
   </div>;
 }
 
-function SettingsPage({ organization, statuses, customStatus, setCustomStatus, onAddStatus, isMaster, canManageSettings }: { organization: Organization | null; statuses: string[]; customStatus: string; setCustomStatus: (value: string) => void; onAddStatus: (event: FormEvent<HTMLFormElement>) => void; isMaster: boolean; canManageSettings: boolean }) {
+function SettingsPage({ organization, statuses, customStatus, setCustomStatus, onAddStatus, scoringValues, setScoringValues, onSaveScoring, isMaster, canManageSettings, saving }: { organization: Organization | null; statuses: string[]; customStatus: string; setCustomStatus: (value: string) => void; onAddStatus: (event: FormEvent<HTMLFormElement>) => void; scoringValues: ScoringValues; setScoringValues: (values: ScoringValues) => void; onSaveScoring: (event: FormEvent<HTMLFormElement>) => void; isMaster: boolean; canManageSettings: boolean; saving: boolean }) {
   return <div className="space-y-6"><PageIntro eyebrow="WORKSPACE CONFIGURATION" title={isMaster ? "Platform settings" : "Workspace settings"} description={isMaster ? "Platform-wide workspace management." : "Manage the sales stages used by your team."} />
     <section className="crm-card max-w-[760px] p-5 md:p-6"><SectionHeader title="Workspace identity" detail="Current client account" /><div className="mt-5 grid gap-4 sm:grid-cols-2"><div><p className="text-[10px] font-medium uppercase text-muted-foreground">Workspace</p><p className="mt-1 text-sm font-medium text-foreground">{organization?.name ?? "Bedifly platform"}</p></div><div><p className="text-[10px] font-medium uppercase text-muted-foreground">Account status</p><div className="mt-1"><StatusPill label={organization?.status ?? "Platform access"} /></div></div><div><p className="text-[10px] font-medium uppercase text-muted-foreground">Business category</p><p className="mt-1 text-sm text-foreground">{organization?.business_category || "Not set"}</p></div><div><p className="text-[10px] font-medium uppercase text-muted-foreground">Subscription</p><p className="mt-1 text-sm text-foreground">{organization?.subscription_plan || "Phase 1"}</p></div></div></section>
     {canManageSettings && !isMaster && <section className="crm-card max-w-[760px] p-5 md:p-6"><SectionHeader title="Lead statuses" detail="Default stages plus custom workspace statuses" /><div className="mt-4 flex flex-wrap gap-2">{statuses.map((status) => <StatusPill key={status} label={status} />)}</div><form onSubmit={onAddStatus} className="mt-5 flex max-w-md gap-2"><Input value={customStatus} onChange={(event) => setCustomStatus(event.target.value)} maxLength={60} placeholder="New status name" required /><Button disabled={customStatus.trim().length < 2}><Plus className="size-4" /> Add status</Button></form></section>}
+    {canManageSettings && organization && <section className="crm-card max-w-[760px] p-5 md:p-6"><SectionHeader title="Lead score rules" detail={`Rules for ${organization.name}`} /><form onSubmit={onSaveScoring} className="mt-5 space-y-5"><div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">{SCORING_FIELDS.map((field) => <Field key={field.key} label={field.label}><Input aria-label={`${field.label} score points`} type="number" min={field.min} max={field.max} step="1" value={scoringValues[field.key]} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= field.min && value <= field.max) setScoringValues({ ...scoringValues, [field.key]: value }); }} required /></Field>)}</div><div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><p className="max-w-lg text-xs leading-relaxed text-muted-foreground">Scores are recalculated for existing leads when these rules are saved. Call-response and interest points apply when the lead stage changes to the matching step.</p><Button disabled={saving}>{saving && <LoaderCircle className="size-4 animate-spin" />}Save score rules</Button></div></form></section>}
     <section className="crm-card max-w-[760px] p-5 md:p-6"><SectionHeader title="Workspace access" detail="Protected by signed-in account roles." /><p className="mt-3 text-xs leading-relaxed text-muted-foreground">Client data, employee visibility, follow-ups, and exports follow the access assigned to your Bedifly CRM account.</p></section>
   </div>;
 }

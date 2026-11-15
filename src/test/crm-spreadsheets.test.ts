@@ -12,7 +12,9 @@ describe("CRM spreadsheet handling", () => {
   });
 
   it("accepts valid lead dates and skips invalid imported dates", () => {
-    expect(parseLeadDate("2026-05-03")).toBe(new Date("2026-05-03").toISOString());
+    const dateOnly = parseLeadDate("2026-05-03");
+    expect(dateOnly).not.toBeNull();
+    expect(new Date(dateOnly ?? "").getHours()).toBe(12);
     expect(parseLeadDate("not-a-date")).toBeNull();
   });
 
@@ -25,5 +27,10 @@ describe("CRM spreadsheet handling", () => {
     const rows = await parseXlsx(buffer);
     expect(rows).toHaveLength(101);
     expect(rows[100]).toEqual(["Lead 100", "Web", "Contact form", "ref-100"]);
+  });
+
+  it("exports spreadsheet text as data rather than executable formulas", async () => {
+    const rows = await parseXlsx(await createXlsx([["Value"], ["=1+1"]]));
+    expect(rows[1]).toEqual(["'=1+1"]);
   });
 });

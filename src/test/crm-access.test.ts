@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasCrmWorkspaceAccess, isWithinDateFilter, resolveWorkspaceSelection } from "@/lib/crm-access";
+import { calculateLeadScore, hasCrmWorkspaceAccess, isWithinDateFilter, resolveWorkspaceSelection } from "@/lib/crm-access";
 
 describe("CRM access boundaries", () => {
   it("does not treat an account without assigned workspaces as CRM workspace access", () => {
@@ -37,6 +37,18 @@ describe("CRM access boundaries", () => {
   it("keeps yesterday separate from today", () => {
     const now = new Date(2026, 4, 6, 12);
     expect(isWithinDateFilter("2026-05-05T12:00:00", "Yesterday", "", "", now)).toBe(true);
+    expect(isWithinDateFilter("2026-05-06T00:00:00", "Yesterday", "", "", now)).toBe(false);
     expect(isWithinDateFilter("2026-05-06T12:00:00", "Yesterday", "", "", now)).toBe(false);
+  });
+
+  it("calculates a converted score using the configured point values and caps it at 100", () => {
+    const rules = { validPhone: 10, validEmail: 5, respondedCall: 15, expressedInterest: 20, meetingScheduled: 25, converted: 50, invalidNumber: -50, duplicate: -100, junkLead: -100 };
+    expect(calculateLeadScore({ phoneValid: true, emailValid: true, status: "Converted" }, rules)).toBe(100);
+  });
+
+  it("applies configured duplicate and invalid-number deductions without going below zero", () => {
+    const rules = { validPhone: 10, validEmail: 5, respondedCall: 15, expressedInterest: 20, meetingScheduled: 25, converted: 50, invalidNumber: -50, duplicate: -100, junkLead: -100 };
+    expect(calculateLeadScore({ phoneValid: false, emailValid: false, status: "Duplicate" }, rules)).toBe(0);
+    expect(calculateLeadScore({ phoneValid: true, emailValid: false, status: "Invalid Number" }, rules)).toBe(0);
   });
 });

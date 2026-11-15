@@ -202,6 +202,62 @@ export type Database = {
           },
         ]
       }
+      lead_scoring_settings: {
+        Row: {
+          converted_points: number
+          created_at: string
+          duplicate_points: number
+          expressed_interest_points: number
+          id: string
+          invalid_number_points: number
+          junk_lead_points: number
+          meeting_scheduled_points: number
+          organization_id: string
+          responded_call_points: number
+          updated_at: string
+          valid_email_points: number
+          valid_phone_points: number
+        }
+        Insert: {
+          converted_points?: number
+          created_at?: string
+          duplicate_points?: number
+          expressed_interest_points?: number
+          id?: string
+          invalid_number_points?: number
+          junk_lead_points?: number
+          meeting_scheduled_points?: number
+          organization_id: string
+          responded_call_points?: number
+          updated_at?: string
+          valid_email_points?: number
+          valid_phone_points?: number
+        }
+        Update: {
+          converted_points?: number
+          created_at?: string
+          duplicate_points?: number
+          expressed_interest_points?: number
+          id?: string
+          invalid_number_points?: number
+          junk_lead_points?: number
+          meeting_scheduled_points?: number
+          organization_id?: string
+          responded_call_points?: number
+          updated_at?: string
+          valid_email_points?: number
+          valid_phone_points?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_scoring_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_statuses: {
         Row: {
           created_at: string

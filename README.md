@@ -23,6 +23,7 @@ Bedifly CRM provides sign-in, separated client workspaces, lead and pipeline man
 - Lead list and Kanban views, lead detail, role-aware updates, notes, activity, and scheduled follow-ups.
 - Lead assignment, CSV and Excel import with duplicate checks, and workspace-scoped CSV and Excel export.
 - Manual lead form and source-reference fields, including imported lead dates and custom date filtering.
+- Per-workspace editable score rules with automatic rescoring after rule changes.
 - Team invitations, activation state, and employee lead/follow-up metrics.
 - Workspace statuses, reports, and responsive navigation.
 
@@ -34,16 +35,15 @@ Lovable Cloud manages the app's authentication and database connection settings.
 
 ## Not included or not yet verified
 
-- Configurable scoring and native Meta integrations are not included in Phase 1.
-- The automated lead score currently uses contact details and pipeline progress; call responses and expressed interest are not recorded as separate scoring events.
+- Native Meta integrations are not included in Phase 1.
+- The automated score derives call-response and interest points from pipeline status; separate call-response and interest events are not recorded.
 - End-to-end multi-client acceptance tests (including two live client accounts, employee invitations, imports into a live tenant, and cross-tenant attempts) require the designated administrator and invited test accounts. Those accounts were not available in this preview session. A 100-row spreadsheet round-trip test passes locally, but it does not verify database import permissions.
 - Rate limiting and adjustable email-confirmation settings were not independently verified.
 
 ## Development checks
 
 ```sh
-bunx vitest run src/test/app-routing.test.tsx src/test/crm-access.test.ts
-bunx vitest run src/test/crm-spreadsheets.test.ts
+bunx vitest run src/test/app-routing.test.tsx src/test/crm-access.test.ts src/test/crm-spreadsheets.test.ts
 oj typecheck -b --noEmit
 ```
 
