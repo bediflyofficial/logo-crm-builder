@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794726140535,
+      "tag": "0000_bedifly_crm_phase_one",
+      "breakpoints": true
+    }
+  ]
+}
