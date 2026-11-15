@@ -28,3 +28,5 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- Keep Bedifly CRM tenant authorization in database-backed role tables and row-level policies, with browser data access scoped through the generated authenticated client, so client workspaces cannot cross-read records.
