@@ -143,7 +143,11 @@ export const getMetaAppStatus = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     await requirePlatformAdmin(context as unknown as Ctx);
     const appId = process.env["META_APP_ID"] ?? "";
-    return { settings: APP_SECRETS.map((name) => ({ name, configured: Boolean(process.env[name]) })), appIdHint: appId ? `••••${appId.slice(-4)}` : null, graphVersion: process.env["META_GRAPH_API_VERSION"] ?? null, redirectUri: process.env["META_REDIRECT_URI"] ?? null, webhookPath: "/api/public/meta/webhook" };
+    const redirectUri = process.env["META_REDIRECT_URI"] ?? null;
+    // Callback URLs are derived from the published HTTPS address Meta must call; secret values are never returned.
+    const base = "https://lead-lantern-workspaces.lovable.app";
+    const settings = APP_SECRETS.map((name) => ({ name, configured: Boolean(process.env[name]?.trim()) }));
+    return { settings, missing: settings.filter((s) => !s.configured).map((s) => s.name), checkedAt: new Date().toISOString(), appIdHint: appId ? `••••${appId.slice(-4)}` : null, graphVersion: process.env["META_GRAPH_API_VERSION"] ?? null, redirectUri, expectedRedirectUri: `${base}/api/public/meta/callback`, redirectMatches: redirectUri === `${base}/api/public/meta/callback`, webhookUrl: `${base}/api/public/meta/webhook`, webhookPath: "/api/public/meta/webhook" };
   });
 
 export const testMetaApp = createServerFn({ method: "POST" })

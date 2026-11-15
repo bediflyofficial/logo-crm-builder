@@ -23,7 +23,7 @@ export function MetaAppPanel() {
   const [open, setOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-  const query = useQuery({ queryKey: ["meta-app-status"], queryFn: () => fetchStatus(), enabled: open, retry: false });
+  const query = useQuery({ queryKey: ["meta-app-status"], queryFn: () => fetchStatus(), enabled: open, retry: false, staleTime: 0, gcTime: 0 });
   const missing = query.data?.settings.filter((s) => !s.configured) ?? [];
   const status: CapiStatus = missing.length ? "configuration_required" : result?.ok === false ? "connection_error" : result?.ok ? "connected" : "not_connected";
   async function test() {
@@ -37,10 +37,13 @@ export function MetaAppPanel() {
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><h3 className="font-semibold">Meta Developer App</h3>{query.data && <StatusBadge status={status} />}</div><Button variant="ghost" size="icon" aria-label="Close Meta App configuration" onClick={() => setOpen(false)}><X className="size-4" /></Button></div>
     {query.isPending ? <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Checking backend settings</p> : query.error ? <p className="mt-4 text-sm text-destructive">{query.error.message}</p> : <>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">{query.data.settings.map((s) => <div key={s.name} className="flex items-center justify-between gap-2 border-b border-border py-2 text-sm"><code className="text-xs">{s.name}</code><span className={s.configured ? "text-primary" : "text-destructive"}>{s.configured ? "Saved" : "Missing"}</span></div>)}</div>
-      <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-3"><div><dt className="text-xs text-muted-foreground">App ID</dt><dd>{query.data.appIdHint ?? "—"}</dd></div><div><dt className="text-xs text-muted-foreground">Graph API version</dt><dd>{query.data.graphVersion ?? "—"}</dd></div><div className="min-w-0"><dt className="text-xs text-muted-foreground">Callback address</dt><dd className="break-all">{query.data.redirectUri ?? "—"}</dd></div></dl>
+      <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-3"><div><dt className="text-xs text-muted-foreground">App ID</dt><dd>{query.data.appIdHint ?? "—"}</dd></div><div><dt className="text-xs text-muted-foreground">Graph API version</dt><dd>{query.data.graphVersion ?? "—"}</dd></div><div className="min-w-0"><dt className="text-xs text-muted-foreground">Saved callback (META_REDIRECT_URI)</dt><dd className="break-all">{query.data.redirectUri ?? "—"}</dd></div></dl>
+      {query.data.missing.length > 0 && <div role="alert" className="mt-4 border-l-2 border-destructive p-3 text-sm text-destructive">Add these backend secrets: {query.data.missing.join(", ")}</div>}
+      <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2"><div className="min-w-0"><dt className="text-xs text-muted-foreground">OAuth callback URL (use in Meta → Facebook Login → Valid OAuth Redirect URIs)</dt><dd className="break-all"><code className="text-xs">{query.data.expectedRedirectUri}</code>{query.data.redirectUri && !query.data.redirectMatches && <span className="block text-xs text-destructive">META_REDIRECT_URI does not match this address.</span>}</dd></div><div className="min-w-0"><dt className="text-xs text-muted-foreground">Webhook callback URL (use in Meta → Webhooks → Page)</dt><dd className="break-all"><code className="text-xs">{query.data.webhookUrl}</code></dd></div></dl>
+      <p className="mt-2 text-xs text-muted-foreground">Last checked {new Date(query.data.checkedAt).toLocaleTimeString()}</p>
       <p className="mt-4 text-xs text-muted-foreground">App ID and App Secret are stored only as backend secrets and are never sent to the browser. Change them in your project's backend secret settings. Webhook path: {query.data.webhookPath}</p>
       {result && <p className={`mt-3 text-sm ${result.ok ? "text-primary" : "text-destructive"}`}>{result.text}</p>}
-      <div className="mt-4 flex gap-2"><Button disabled={testing} onClick={() => void test()}>{testing ? <LoaderCircle className="size-4 animate-spin" /> : <PlugZap className="size-4" />}Test Meta App</Button><Button variant="outline" onClick={() => { setResult(null); void query.refetch(); }}>Refresh status</Button></div>
+      <div className="mt-4 flex gap-2"><Button disabled={testing} onClick={() => void test()}>{testing ? <LoaderCircle className="size-4 animate-spin" /> : <PlugZap className="size-4" />}Test Meta App</Button><Button variant="outline" disabled={query.isFetching} onClick={() => { setResult(null); void query.refetch(); }}>{query.isFetching && <LoaderCircle className="size-4 animate-spin" />}Refresh status</Button></div>
     </>}
   </section>;
 }
