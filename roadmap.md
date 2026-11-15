@@ -12,7 +12,8 @@
 - [x] Add tenant-isolated Meta connections, selected assets, sync settings and durable webhook inbox.
 - [x] Add Meta integration setup and health screens without simulated connection states.
 - [x] Implement verified webhook reception and deduplicated job storage.
-- [ ] Implement client-owned OAuth, asset discovery, lead retrieval, assignment and retry processing; requires Meta Developer App configuration.
+- [ ] Implement client-owned OAuth and asset discovery, with secure workspace-owned connections and asset selection.
+- [ ] Implement lead retrieval, assignment and retry processing; live activation requires Meta Developer App configuration.
 - [ ] Verify real Meta connection, selected-form synchronization and two-client isolation.
 
 ## Phase 3 — Conversion reporting

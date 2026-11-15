@@ -78,6 +78,13 @@
       "when": 1794743634705,
       "tag": "0010_restrict_meta_credential_and_queue_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794743989827,
+      "tag": "0011_meta_oauth_sessions_and_asset_credentials",
+      "breakpoints": true
     }
   ]
 }

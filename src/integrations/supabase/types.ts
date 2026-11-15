@@ -418,6 +418,42 @@ export type Database = {
           },
         ]
       }
+      meta_asset_credentials: {
+        Row: {
+          asset_id: string
+          encrypted_access_token: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          asset_id: string
+          encrypted_access_token: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          asset_id?: string
+          encrypted_access_token?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_asset_credentials_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: true
+            referencedRelation: "meta_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_asset_credentials_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_assets: {
         Row: {
           asset_type: string
@@ -478,6 +514,7 @@ export type Database = {
       meta_connections: {
         Row: {
           connected_at: string | null
+          connected_by: string | null
           connection_status: string
           created_at: string
           encrypted_access_token: string | null
@@ -488,9 +525,11 @@ export type Database = {
           meta_user_id: string | null
           organization_id: string
           token_expires_at: string | null
+          updated_at: string
         }
         Insert: {
           connected_at?: string | null
+          connected_by?: string | null
           connection_status?: string
           created_at?: string
           encrypted_access_token?: string | null
@@ -501,9 +540,11 @@ export type Database = {
           meta_user_id?: string | null
           organization_id: string
           token_expires_at?: string | null
+          updated_at?: string
         }
         Update: {
           connected_at?: string | null
+          connected_by?: string | null
           connection_status?: string
           created_at?: string
           encrypted_access_token?: string | null
@@ -514,6 +555,7 @@ export type Database = {
           meta_user_id?: string | null
           organization_id?: string
           token_expires_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -737,6 +779,47 @@ export type Database = {
           },
           {
             foreignKeyName: "meta_lead_responses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_oauth_sessions: {
+        Row: {
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          organization_id: string
+          redirect_uri: string
+          state_hash: string
+          user_id: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          redirect_uri: string
+          state_hash: string
+          user_id: string
+        }
+        Update: {
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          redirect_uri?: string
+          state_hash?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_oauth_sessions_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
