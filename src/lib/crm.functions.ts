@@ -13,6 +13,25 @@ function appRedirectUrl() {
   return url.origin;
 }
 
+export const ensureBediflyAdminAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: identity, error } = await context.supabase.auth.getUser();
+    if (error || !identity.user || identity.user.email?.toLowerCase() !== "bediflyofficial@gmail.com" || !identity.user.email_confirmed_at) {
+      return { isPlatformAdmin: false };
+    }
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error: insertError } = await supabaseAdmin.from("user_roles").insert(
+      { user_id: identity.user.id, organization_id: null, role: "platform_admin" },
+    );
+    if (insertError) {
+      const { data: existingRole, error: lookupError } = await context.supabase.from("user_roles").select("id")
+        .eq("user_id", identity.user.id).eq("role", "platform_admin").maybeSingle();
+      if (lookupError || !existingRole) throw new Error("Bedifly platform access could not be verified.");
+    }
+    return { isPlatformAdmin: true };
+  });
+
 const organizationInput = z.object({
   name: z.string().trim().min(2).max(120),
   contactPerson: z.string().trim().min(2).max(120),

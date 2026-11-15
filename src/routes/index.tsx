@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   ArrowDownToLine,
-  ArrowLeftRight,
   ArrowRight,
   BarChart3,
   Bell,
@@ -43,6 +42,7 @@ import {
 } from "lucide-react";
 import {
   CartesianGrid,
+  Cell as RechartCell,
   Legend,
   Line,
   LineChart,
@@ -61,7 +61,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
-import { createClientWorkspace, inviteSalesExecutive } from "@/lib/crm.functions";
+import { createClientWorkspace, ensureBediflyAdminAccess, inviteSalesExecutive } from "@/lib/crm.functions";
 import type { Database } from "@/integrations/supabase/types";
 import bediflyLogo from "@/assets/bedifly-logo.png.asset.json";
 
@@ -104,7 +104,7 @@ const leadSchema = z.object({
 
 const emptyLead = {
   full_name: "", phone: "", email: "", whatsapp_number: "", city: "", state: "", country: "", source: "Manual",
-  campaign_name: "", ad_set_name: "", ad_name: "", status: "New Lead", quality: "Warm" as const, assigned_to: "", lead_value: "",
+  campaign_name: "", ad_set_name: "", ad_name: "", status: "New Lead", quality: "Warm" as (typeof QUALITIES)[number], assigned_to: "", lead_value: "",
 };
 
 export const Route = createFileRoute("/")({
@@ -124,6 +124,7 @@ export const Route = createFileRoute("/")({
 function BediflyCRM() {
   const queryClient = useQueryClient();
   const makeClient = useServerFn(createClientWorkspace);
+  const verifyPlatformAccess = useServerFn(ensureBediflyAdminAccess);
   const inviteEmployee = useServerFn(inviteSalesExecutive);
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -143,6 +144,7 @@ function BediflyCRM() {
   const [loadingData, setLoadingData] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [page, setPage] = useState<PageKey>("overview");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [qualityFilter, setQualityFilter] = useState("All qualities");
@@ -152,6 +154,7 @@ function BediflyCRM() {
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [showCreateClient, setShowCreateClient] = useState(false);
   const [showCreateLead, setShowCreateLead] = useState(false);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [editingClient, setEditingClient] = useState<Organization | null>(null);
   const [saving, setSaving] = useState(false);
@@ -164,34 +167,41 @@ function BediflyCRM() {
   const [customStatus, setCustomStatus] = useState("");
 
   const isMaster = role === "platform_admin";
+  const [statusCatalog, setStatusCatalog] = useState<string[]>(STATUSES);
+  const statusOptions = useMemo(() => Array.from(new Set([...STATUSES, ...statusCatalog, ...allLeads.map((lead) => lead.status)])), [statusCatalog, allLeads]);
   const activeOrganization = organizations.find((organization) => organization.id === activeOrganizationId) ?? organizations[0] ?? null;
   const membersById = useMemo(() => Object.fromEntries(members.map((member) => [member.user_id, member])), [members]);
+  const scopedLeads = useMemo(() => isMaster && activeOrganizationId ? allLeads.filter((lead) => lead.organization_id === activeOrganizationId) : allLeads, [allLeads, isMaster, activeOrganizationId]);
   const visibleLeads = useMemo(() => {
     const term = search.trim().toLowerCase();
     const cutoff = getDateCutoff(dateFilter);
-    return allLeads.filter((lead) => {
+    return scopedLeads.filter((lead) => {
       const matchesSearch = !term || [lead.full_name, lead.phone, lead.email, lead.source, lead.campaign_name]
         .some((value) => value?.toLowerCase().includes(term));
       return matchesSearch && (statusFilter === "All statuses" || lead.status === statusFilter) &&
         (qualityFilter === "All qualities" || lead.quality === qualityFilter) && (!cutoff || new Date(lead.created_at) >= cutoff);
     });
-  }, [allLeads, search, statusFilter, qualityFilter, dateFilter]);
-  const stats = useMemo(() => getLeadStats(allLeads), [allLeads]);
-  const chartTrend = useMemo(() => getLeadTrend(allLeads), [allLeads]);
-  const statusBreakdown = useMemo(() => STATUSES.map((status) => ({ name: status, value: allLeads.filter((lead) => lead.status === status).length })).filter((entry) => entry.value), [allLeads]);
-  const qualityBreakdown = useMemo(() => QUALITIES.map((quality) => ({ name: quality, value: allLeads.filter((lead) => lead.quality === quality).length })).filter((entry) => entry.value), [allLeads]);
-  const customStatuses = useMemo(() => Array.from(new Set(allLeads.map((lead) => lead.status))), [allLeads]);
-  const statusOptions = useMemo(() => Array.from(new Set([...STATUSES, ...customStatuses])), [customStatuses]);
+  }, [scopedLeads, search, statusFilter, qualityFilter, dateFilter]);
+  const stats = useMemo(() => getLeadStats(scopedLeads), [scopedLeads]);
+  const chartTrend = useMemo(() => getLeadTrend(scopedLeads), [scopedLeads]);
+  const statusBreakdown = useMemo(() => statusOptions.map((status) => ({ name: status, value: scopedLeads.filter((lead) => lead.status === status).length })).filter((entry) => entry.value), [statusOptions, scopedLeads]);
+  const qualityBreakdown = useMemo(() => QUALITIES.map((quality) => ({ name: quality, value: scopedLeads.filter((lead) => lead.quality === quality).length })).filter((entry) => entry.value), [scopedLeads]);
   const selectedOrganization = useMemo(() => organizations.find((organization) => organization.id === activeOrganizationId) ?? organizations[0], [organizations, activeOrganizationId]);
 
-  async function loadWorkspace(currentUser: { id: string; email: string }, nextOrgId?: string) {
+  async function loadWorkspace(currentUser: { id: string; email: string }, nextOrgId?: string, scopeLeadsToSelected = false) {
     setLoadingData(true);
     setLoadError("");
     try {
       const { data: roles, error: roleError } = await supabase.from("user_roles").select("id, user_id, organization_id, role, created_at").eq("user_id", currentUser.id);
       if (roleError) throw roleError;
       const userRoles = (roles ?? []) as Role[];
-      const platformRole = userRoles.find((item) => item.role === "platform_admin");
+      let platformRole = userRoles.find((item) => item.role === "platform_admin");
+      if (!platformRole) {
+        const verifiedAdmin = await verifyPlatformAccess();
+        if (verifiedAdmin.isPlatformAdmin) {
+          platformRole = { id: "", user_id: currentUser.id, organization_id: null, role: "platform_admin", created_at: "" };
+        }
+      }
       const currentRole = platformRole?.role ?? userRoles[0]?.role ?? "";
       setRole(currentRole);
       if (!currentRole) {
@@ -213,7 +223,7 @@ function BediflyCRM() {
           : accessibleOrganizations[0]?.id ?? "";
       setActiveOrganizationId(targetId);
       const leadQuery = supabase.from("leads").select("*").is("deleted_at", null).order("created_at", { ascending: false });
-      const { data: leadRows, error: leadError } = targetId && !platformRole
+      const { data: leadRows, error: leadError } = targetId && (!platformRole || scopeLeadsToSelected)
         ? await leadQuery.eq("organization_id", targetId).limit(1000)
         : await leadQuery.limit(1000);
       if (leadError) throw leadError;
@@ -221,15 +231,24 @@ function BediflyCRM() {
 
       const orgIds = platformRole ? accessibleOrganizations.map((org) => org.id) : targetId ? [targetId] : [];
       if (orgIds.length) {
-        const [memberResult, followResult] = await Promise.all([
-          supabase.from("organization_members").select("*, user_roles(role)").in("organization_id", orgIds).order("joined_at", { ascending: false }),
+        const [memberResult, roleResult, followResult, statusResult] = await Promise.all([
+          supabase.from("organization_members").select("*").in("organization_id", orgIds).order("joined_at", { ascending: false }),
+          supabase.from("user_roles").select("user_id, role, organization_id").in("organization_id", orgIds),
           supabase.from("follow_ups").select("*").in("organization_id", orgIds).order("scheduled_at").limit(500),
+          supabase.from("lead_statuses").select("name").in("organization_id", orgIds).order("position"),
         ]);
         if (memberResult.error) throw memberResult.error;
+        if (roleResult.error) throw roleResult.error;
         if (followResult.error) throw followResult.error;
-        setMembers((memberResult.data ?? []) as Member[]);
+        if (statusResult.error) throw statusResult.error;
+        const roleRows = roleResult.data ?? [];
+        setMembers((memberResult.data ?? []).map((member) => ({
+          ...member,
+          user_roles: roleRows.filter((item) => item.user_id === member.user_id && item.organization_id === member.organization_id).map((item) => ({ role: item.role })),
+        })) as Member[]);
         setFollowUps((followResult.data ?? []) as FollowUp[]);
-      } else { setMembers([]); setFollowUps([]); }
+        setStatusCatalog((statusResult.data ?? []).map((item) => item.name));
+      } else { setMembers([]); setFollowUps([]); setStatusCatalog(STATUSES); }
     } catch (error) {
       const message = error instanceof Error ? error.message : "The workspace could not be loaded.";
       setLoadError(message); toast.error(message);
@@ -255,8 +274,8 @@ function BediflyCRM() {
     return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
 
-  async function refresh(nextOrgId?: string) {
-    if (user) await loadWorkspace(user, nextOrgId);
+  async function refresh(nextOrgId?: string, scopeLeadsToSelected = false) {
+    if (user) await loadWorkspace(user, nextOrgId, scopeLeadsToSelected);
   }
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
@@ -329,8 +348,17 @@ function BediflyCRM() {
     if (!parsed.success) { toast.error(parsed.error.issues[0]?.message ?? "Check the lead details."); return; }
     setSaving(true);
     const value = parsed.data;
-    const payload: LeadInsert = {
-      organization_id: activeOrganization.id,
+    const normalizedPhone = value.phone.replace(/[^0-9]/g, "");
+    const normalizedEmail = value.email.trim().toLowerCase();
+    const duplicate = allLeads.find((existing) =>
+      (normalizedPhone.length >= 7 && (existing.phone ?? "").replace(/[^0-9]/g, "") === normalizedPhone) ||
+      (normalizedEmail.length > 0 && existing.email?.toLowerCase() === normalizedEmail),
+    );
+    if (duplicate && !window.confirm(`A lead with similar contact details already exists: ${duplicate.full_name}. Add this as a separate lead?`)) {
+      setSaving(false);
+      return;
+    }
+    const payload = {
       full_name: value.full_name,
       phone: value.phone || null,
       email: value.email || null,
@@ -346,11 +374,13 @@ function BediflyCRM() {
       quality: value.quality,
       assigned_to: value.assigned_to || null,
       lead_value: value.lead_value ? Number(value.lead_value) : null,
-      created_by: user.id,
     };
-    const { data, error } = await supabase.from("leads").insert(payload).select().single();
+    const currentEditId = editingLeadId;
+    const { data, error } = currentEditId
+      ? await supabase.from("leads").update(payload).eq("id", currentEditId).select().single()
+      : await supabase.from("leads").insert({ ...payload, organization_id: activeOrganization.id, created_by: user.id }).select().single();
     if (error) toast.error(error.message);
-    else { toast.success("Lead added to your workspace."); setShowCreateLead(false); setLeadForm(emptyLead); setActiveLead(data); await refresh(); }
+    else { toast.success(currentEditId ? "Lead details updated." : "Lead added to your workspace."); setShowCreateLead(false); setEditingLeadId(null); setLeadForm(emptyLead); setActiveLead(data); await refresh(); }
     setSaving(false);
   }
 
@@ -431,6 +461,36 @@ function BediflyCRM() {
     else { toast.success(`${selectedIds.length} lead${selectedIds.length === 1 ? "" : "s"} updated.`); setSelectedIds([]); await refresh(); }
   }
 
+  async function bulkDelete() {
+    if (!selectedIds.length || !window.confirm(`Remove ${selectedIds.length} selected lead${selectedIds.length === 1 ? "" : "s"} from this workspace?`)) return;
+    const { error } = await supabase.from("leads").update({ deleted_at: new Date().toISOString() }).in("id", selectedIds);
+    if (error) toast.error(error.message);
+    else { toast.success(`${selectedIds.length} leads removed.`); setSelectedIds([]); await refresh(); }
+  }
+
+  async function moveLead(lead: Lead, status: string) {
+    await updateLead(lead, { status }, "Lead status updated.");
+  }
+
+  function startEditLead(lead: Lead) {
+    setActiveLead(null);
+    setEditingLeadId(lead.id);
+    setLeadForm({
+      full_name: lead.full_name, phone: lead.phone ?? "", email: lead.email ?? "", whatsapp_number: lead.whatsapp_number ?? "",
+      city: lead.city ?? "", state: lead.state ?? "", country: lead.country ?? "", source: lead.source, campaign_name: lead.campaign_name ?? "",
+      ad_set_name: lead.ad_set_name ?? "", ad_name: lead.ad_name ?? "", status: lead.status,
+      quality: lead.quality as (typeof QUALITIES)[number], assigned_to: lead.assigned_to ?? "", lead_value: lead.lead_value?.toString() ?? "",
+    });
+    setShowCreateLead(true);
+  }
+
+  async function setMemberActive(member: Member) {
+    const nextState = !member.is_active;
+    const { error } = await supabase.from("organization_members").update({ is_active: nextState }).eq("id", member.id);
+    if (error) toast.error(error.message);
+    else { toast.success(`${member.full_name || member.email || "Team member"} ${nextState ? "activated" : "deactivated"}.`); await refresh(); }
+  }
+
   async function addStatus(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = customStatus.trim().slice(0, 60);
@@ -469,7 +529,7 @@ function BediflyCRM() {
           email: email.slice(0, 254) || null, city: cityIndex >= 0 ? row[cityIndex]?.trim().slice(0, 120) || null : null,
           source: sourceIndex >= 0 ? row[sourceIndex]?.trim().slice(0, 120) || "Manual" : "CSV import",
           status: statusValue && statusOptions.includes(statusValue) ? statusValue : "New Lead",
-          quality: QUALITIES.includes(qualityValue as (typeof QUALITIES)[number]) ? qualityValue : "Warm",
+          quality: (QUALITIES.includes(qualityValue as (typeof QUALITIES)[number]) ? qualityValue : "Warm") as (typeof QUALITIES)[number],
         };
       }).filter((row): row is LeadInsert => row !== null);
       if (!candidates.length) throw new Error("No valid lead rows were found in this file.");
@@ -543,7 +603,8 @@ function BediflyCRM() {
         </div>
         <nav aria-label="Main navigation" className="mt-7 flex flex-1 flex-col gap-1 px-3">
           <p className="mb-2 px-3 text-[10px] font-semibold uppercase text-muted-foreground">Manage</p>
-          {currentNav.map(({ key, label, icon: Icon }) => <button key={key} onClick={() => { setPage(key); setSelectedIds([]); }} data-active={page === key} className="crm-nav-item flex h-10 items-center gap-3 rounded-md px-3 text-left text-[13px] font-medium"><Icon className="size-[17px]" />{label}{key === "follow-ups" && overdueFollowUps.length > 0 && <span className="ml-auto rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] text-destructive">{overdueFollowUps.length}</span>}</button>)}
+          {isMaster && <label className="mb-2 mt-2 grid gap-1 px-3 text-[10px] font-semibold uppercase text-muted-foreground">Client workspace<select aria-label="Open a client workspace" className="h-9 rounded-md border border-border bg-card px-2 text-xs font-normal normal-case text-foreground" value={activeOrganizationId} onChange={(event) => { const id = event.target.value; setActiveOrganizationId(id); setPage("leads"); setSelectedIds([]); void refresh(id); }}><option value="">All client workspaces</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>}
+          {currentNav.map(({ key, label, icon: Icon }) => <button key={key} onClick={() => { setPage(key); setSelectedIds([]); setMobileNavOpen(false); if (isMaster && key === "overview" && user) void loadWorkspace(user); }} data-active={page === key} className="crm-nav-item flex h-10 items-center gap-3 rounded-md px-3 text-left text-[13px] font-medium"><Icon className="size-[17px]" />{label}{key === "follow-ups" && overdueFollowUps.length > 0 && <span className="ml-auto rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] text-destructive">{overdueFollowUps.length}</span>}</button>)}
         </nav>
         <div className="mx-4 mb-4 rounded-md bg-accent/50 p-3">
           <div className="flex items-center gap-2 text-xs font-medium text-foreground"><CircleHelp className="size-4 text-primary" /> Bedifly CRM</div>
@@ -559,10 +620,10 @@ function BediflyCRM() {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1">
+    <main className="min-w-0 flex-1">
         <header className="crm-topbar sticky top-0 z-20 flex min-h-[72px] items-center justify-between gap-4 px-4 md:px-8">
           <div className="flex min-w-0 items-center gap-3">
-            <button aria-label="Open navigation" className="crm-nav-item grid size-9 place-items-center rounded-md lg:hidden" onClick={() => setPage("overview")}><Menu className="size-5" /></button>
+            <button aria-label="Open navigation" className="crm-nav-item grid size-9 place-items-center rounded-md lg:hidden" onClick={() => setMobileNavOpen(true)}><Menu className="size-5" /></button>
             <div className="min-w-0"><div className="flex items-center gap-2"><p className="truncate text-xs text-muted-foreground">{isMaster ? "Bedifly / Platform" : `Workspaces / ${activeOrganization?.name ?? "Workspace"}`}</p>{isMaster && <span className="shrink-0 rounded-sm bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">Platform</span>}</div><h1 className="truncate text-[16px] font-semibold text-foreground">{pageTitle(page, isMaster)}</h1></div>
           </div>
           <div className="flex shrink-0 items-center gap-2 md:gap-3">
@@ -576,16 +637,18 @@ function BediflyCRM() {
           {loadingData && <div className="mb-5 flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Updating workspace</div>}
           {loadError && <div className="mb-5 rounded-md border border-accent bg-accent/50 px-4 py-3 text-sm text-accent-foreground">{loadError}</div>}
           {!activeOrganization && !isMaster && !loadError && <div className="crm-card p-8 text-center"><Building2 className="mx-auto size-8 text-muted-foreground" /><h2 className="mt-3 text-lg font-semibold">No workspace access</h2><p className="mt-1 text-sm text-muted-foreground">Ask your Bedifly administrator to send you a workspace invitation.</p></div>}
-          {(page === "overview") && <OverviewPage isMaster={isMaster} organization={activeOrganization} organizations={organizations} stats={stats} leads={allLeads} members={members} followUps={activeFollowUps} trend={chartTrend} statuses={statusBreakdown} qualities={qualityBreakdown} onOpenLead={openLead} onPage={setPage} />}
+          {(page === "overview") && <OverviewPage isMaster={isMaster} organization={activeOrganization} organizations={organizations} stats={stats} leads={scopedLeads} members={members} followUps={activeFollowUps.filter((item) => !isMaster || !activeOrganizationId || item.organization_id === activeOrganizationId)} trend={chartTrend} statuses={statusBreakdown} qualities={qualityBreakdown} onOpenLead={openLead} onPage={setPage} />}
           {page === "clients" && isMaster && <ClientsPage organizations={organizations} leads={allLeads} stats={stats} onCreate={() => setShowCreateClient(true)} onEdit={(organization) => { setEditingClient(organization); setClientForm({ name: organization.name, contactPerson: organization.contact_person ?? "", email: organization.email ?? "", phone: organization.phone ?? "", businessCategory: organization.business_category ?? "", website: organization.website ?? "", address: organization.address ?? "", city: organization.city ?? "", country: organization.country ?? "" }); setShowCreateClient(true); }} onToggleStatus={saveOrganizationStatus} onOpen={(organization) => { setActiveOrganizationId(organization.id); setPage("leads"); void refresh(organization.id); }} />}
-          {(page === "leads" || page === "pipeline") && <LeadsPage page={page} isMaster={isMaster} leads={visibleLeads} members={members} stats={stats} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} qualityFilter={qualityFilter} setQualityFilter={setQualityFilter} dateFilter={dateFilter} setDateFilter={setDateFilter} view={view} setView={setView} selectedIds={selectedIds} setSelectedIds={setSelectedIds} statusOptions={statusOptions} onOpenLead={openLead} onCreate={() => { setLeadForm(emptyLead); setShowCreateLead(true); }} onExport={() => exportLeads()} onImport={importCsv} onBulkUpdate={bulkUpdate} bulkAssignee={bulkAssignee} setBulkAssignee={setBulkAssignee} membersById={membersById} />}
-          {page === "team" && <TeamPage isMaster={isMaster} organizations={organizations} members={members} leads={allLeads} followUps={activeFollowUps} onInvite={() => setShowInvite(true)} />}
+          {(page === "leads" || page === "pipeline") && <LeadsPage page={page} isMaster={isMaster} leads={visibleLeads} members={members} stats={getLeadStats(visibleLeads)} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} qualityFilter={qualityFilter} setQualityFilter={setQualityFilter} dateFilter={dateFilter} setDateFilter={setDateFilter} view={page === "pipeline" ? "kanban" : view} setView={setView} selectedIds={selectedIds} setSelectedIds={setSelectedIds} statusOptions={statusOptions} onOpenLead={openLead} onCreate={() => { setEditingLeadId(null); setLeadForm(emptyLead); setShowCreateLead(true); }} onExport={() => exportLeads()} onImport={importCsv} onBulkUpdate={bulkUpdate} onBulkDelete={bulkDelete} onMoveLead={moveLead} bulkAssignee={bulkAssignee} setBulkAssignee={setBulkAssignee} membersById={membersById} />}
+          {page === "team" && <TeamPage isMaster={isMaster} organizations={organizations} members={members} leads={allLeads} followUps={activeFollowUps} onInvite={() => setShowInvite(true)} onToggleMember={setMemberActive} />}
           {page === "follow-ups" && <FollowUpsPage followUps={activeFollowUps} leads={allLeads} membersById={membersById} onComplete={completeFollowUp} onOpenLead={(id) => { const lead = allLeads.find((row) => row.id === id); if (lead) void openLead(lead); }} />}
-          {page === "reports" && <ReportsPage leads={allLeads} members={members} onExport={exportLeads} />}
-          {page === "activity" && <ActivityPage leads={allLeads} stats={stats} organizations={organizations} />}
+          {page === "reports" && <ReportsPage leads={scopedLeads} members={members} onExport={exportLeads} />}
+          {page === "activity" && <ActivityPage leads={scopedLeads} stats={stats} organizations={organizations} />}
           {page === "settings" && <SettingsPage organization={activeOrganization} statuses={statusOptions} customStatus={customStatus} setCustomStatus={setCustomStatus} onAddStatus={addStatus} isMaster={isMaster} />}
         </div>
       </main>
+
+      {mobileNavOpen && <div className="fixed inset-0 z-40 bg-foreground/35 lg:hidden" onClick={() => setMobileNavOpen(false)}><aside className="crm-sidebar flex h-full w-[280px] max-w-[85vw] flex-col shadow-xl" onClick={(event) => event.stopPropagation()}><div className="flex h-[72px] items-center justify-between border-b border-sidebar-border px-5"><img src={bediflyLogo.url} alt="Bedifly CRM" className="h-10 max-w-[145px] object-contain object-left" /><Button variant="ghost" size="icon" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}><X className="size-4" /></Button></div><nav className="flex flex-1 flex-col gap-1 px-3 py-5">{currentNav.map(({ key, label, icon: Icon }) => <button key={key} onClick={() => { setPage(key); setMobileNavOpen(false); if (isMaster && key === "overview" && user) void loadWorkspace(user); }} data-active={page === key} className="crm-nav-item flex h-11 items-center gap-3 rounded-md px-3 text-left text-sm"><Icon className="size-4" />{label}</button>)}</nav><button onClick={signOut} className="crm-nav-item flex items-center gap-3 border-t border-sidebar-border px-5 py-4 text-sm"><LogOut className="size-4" /> Sign out</button></aside></div>}
 
       {showCreateClient && <Modal title={editingClient ? "Edit client" : "Add a client workspace"} subtitle="A private workspace for a client team." onClose={() => { setShowCreateClient(false); setEditingClient(null); }}>
         <form onSubmit={editingClient ? async (event) => { event.preventDefault(); if (!editingClient) return; const parsed = organizationSchema.safeParse(clientForm); if (!parsed.success) { toast.error(parsed.error.issues[0]?.message ?? "Check the details."); return; } setSaving(true); const { error } = await supabase.from("organizations").update({ name: parsed.data.name, contact_person: parsed.data.contactPerson, email: parsed.data.email, phone: parsed.data.phone || null, business_category: parsed.data.businessCategory || null, website: parsed.data.website || null, address: parsed.data.address || null, city: parsed.data.city || null, country: parsed.data.country || null }).eq("id", editingClient.id); if (error) toast.error(error.message); else { toast.success("Client updated."); setShowCreateClient(false); setEditingClient(null); await refresh(); } setSaving(false); } : createOrganization} className="space-y-4">
@@ -596,7 +659,7 @@ function BediflyCRM() {
         </form>
       </Modal>}
 
-      {showCreateLead && <Modal title="Add a lead" subtitle="Create a lead in the current client workspace." onClose={() => setShowCreateLead(false)} wide>
+      {showCreateLead && <Modal title={editingLeadId ? "Edit lead details" : "Add a lead"} subtitle={editingLeadId ? "Update the lead’s workspace information." : "Create a lead in the current client workspace."} onClose={() => { setShowCreateLead(false); setEditingLeadId(null); }} wide>
         <form onSubmit={submitLead} className="space-y-5"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Full name" required><Input autoFocus value={leadForm.full_name} onChange={(event) => setLeadForm({ ...leadForm, full_name: event.target.value })} maxLength={150} required /></Field>
           <Field label="Phone number"><Input type="tel" value={leadForm.phone} onChange={(event) => setLeadForm({ ...leadForm, phone: event.target.value })} maxLength={40} /></Field>
@@ -621,7 +684,7 @@ function BediflyCRM() {
       </Modal>}
 
       {activeLead && <Modal title={activeLead.full_name} subtitle={`${activeLead.source} · Added ${formatDate(activeLead.created_at)}`} onClose={() => { setActiveLead(null); setNotes([]); setActivities([]); }} wide>
-        <LeadDetail lead={activeLead} members={members} notes={notes} activities={activities} onUpdate={updateLead} onDelete={deleteLead} noteDraft={noteDraft} setNoteDraft={setNoteDraft} onAddNote={submitNote} followUpDraft={followUpDraft} setFollowUpDraft={setFollowUpDraft} onSchedule={submitFollowUp} />
+        <LeadDetail lead={activeLead} members={members} notes={notes} activities={activities} onUpdate={updateLead} onDelete={deleteLead} onEdit={startEditLead} canManageLeads={role !== "sales_exec"} noteDraft={noteDraft} setNoteDraft={setNoteDraft} onAddNote={submitNote} followUpDraft={followUpDraft} setFollowUpDraft={setFollowUpDraft} onSchedule={submitFollowUp} />
       </Modal>}
     </div>
   );
@@ -704,7 +767,7 @@ function OverviewPage({ isMaster, organization, organizations, stats, leads, mem
     <div className="flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-xs font-medium text-primary"><span className="size-1.5 rounded-full bg-primary" /> {isMaster ? "MASTER WORKSPACE" : organization?.name ?? "CLIENT WORKSPACE"}</div><h2 className="text-[23px] font-semibold text-foreground">{sectionTitle}</h2><p className="mt-1 text-sm text-muted-foreground">{isMaster ? "A live view of your clients, leads, and sales activity." : "Here’s what’s happening across your sales pipeline."}</p></div><div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => onPage("reports")}><Download className="size-4" /> Export report</Button>{isMaster && <Button size="sm" onClick={() => onPage("clients")}><Plus className="size-4" /> Add client</Button>}</div></div>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{metrics.map((metric) => <MetricTile key={metric.label} {...metric} />)}</div>
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(290px,0.85fr)]"><section className="crm-card p-5 md:p-6"><SectionHeader title={isMaster ? "Lead activity" : "Lead generation"} detail="New leads over the last 14 days" action={<Button variant="ghost" size="sm" onClick={() => onPage("leads")}>View leads <ArrowRight className="size-4" /></Button>} />{trend.some((item) => item.leads > 0) ? <div className="mt-5 h-[250px] w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend} margin={{ left: -14, right: 10, top: 10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} className="crm-gridline" /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} /><Tooltip contentStyle={{ borderRadius: 6, borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" }} /><Line type="monotone" dataKey="leads" name="Leads" stroke="var(--primary)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--primary)" }} activeDot={{ r: 5 }} /></LineChart></ResponsiveContainer></div> : <EmptyChart label="Your lead activity will appear here." />}</section>
-      <section className="crm-card p-5 md:p-6"><SectionHeader title={isMaster ? "Lead status" : "Pipeline status"} detail="Current distribution" action={<Button variant="ghost" size="icon" aria-label="Open leads" onClick={() => onPage("leads")}><ArrowRight className="size-4" /></Button>} />{statuses.length ? <div className="mt-2 h-[250px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={statuses} dataKey="value" nameKey="name" innerRadius={60} outerRadius={89} paddingAngle={2} stroke="var(--card)">{statuses.map((item, index) => <Cell key={item.name} index={index} />)}</Pie><Tooltip contentStyle={{ borderRadius: 6, borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" }} /><Legend verticalAlign="bottom" height={42} iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 10, color: "var(--muted-foreground)" }} /></PieChart></ResponsiveContainer></div> : <EmptyChart label="Status breakdown will appear when leads arrive." />}</section></div>
+      <section className="crm-card p-5 md:p-6"><SectionHeader title={isMaster ? "Lead status" : "Pipeline status"} detail="Current distribution" action={<Button variant="ghost" size="icon" aria-label="Open leads" onClick={() => onPage("leads")}><ArrowRight className="size-4" /></Button>} />{statuses.length ? <div className="mt-2 h-[250px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={statuses} dataKey="value" nameKey="name" innerRadius={60} outerRadius={89} paddingAngle={2} stroke="var(--card)">{statuses.map((item, index) => <RechartCell key={item.name} fill={["var(--primary)", "var(--chart-2)", "var(--chart-4)", "var(--chart-5)", "var(--chart-3)"][index % 5]} />)}</Pie><Tooltip contentStyle={{ borderRadius: 6, borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" }} /><Legend verticalAlign="bottom" height={42} iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 10, color: "var(--muted-foreground)" }} /></PieChart></ResponsiveContainer></div> : <EmptyChart label="Status breakdown will appear when leads arrive." />}</section></div>
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]"><section className="crm-card overflow-hidden"><div className="p-5 md:px-6"><SectionHeader title={isMaster ? "Client workspaces" : "Recent leads"} detail={isMaster ? "Client activity across your platform" : "The latest additions to your workspace"} action={<Button variant="ghost" size="sm" onClick={() => onPage(isMaster ? "clients" : "leads")}>View all <ArrowRight className="size-4" /></Button>} /></div>{isMaster ? <ClientSummary organizations={organizations} leads={leads} onOpen={(organization) => { void organization; onPage("clients"); }} /> : <RecentLeads leads={leads.slice(0, 7)} onOpen={onOpenLead} />}</section>
       <div className="space-y-5"><section className="crm-card p-5"><SectionHeader title="Lead quality" detail="Current pipeline" />{qualities.length ? <div className="mt-4 space-y-3">{qualities.map((item) => <div key={item.name}><div className="mb-1.5 flex justify-between text-xs"><span className="text-foreground">{item.name}</span><span className="text-muted-foreground">{item.value}</span></div><div className="h-1.5 rounded-full bg-muted"><div className={`h-full rounded-full ${qualityBar(item.name)}`} style={{ width: `${Math.max(6, (item.value / Math.max(stats.total, 1)) * 100)}%` }} /></div></div>)}</div> : <p className="py-6 text-center text-xs text-muted-foreground">No quality data yet.</p>}</section>
         <section className="crm-card p-5"><SectionHeader title="Team snapshot" detail={`${members.length} team member${members.length === 1 ? "" : "s"}`} action={<Button variant="ghost" size="icon" aria-label="View team" onClick={() => onPage("team")}><ArrowRight className="size-4" /></Button>} />{members.length ? <div className="mt-4 space-y-3">{members.slice(0, 4).map((member) => <div key={member.user_id} className="flex items-center gap-3"><div className="grid size-8 place-items-center rounded-full bg-secondary text-[10px] font-semibold text-secondary-foreground">{initials(member.full_name || member.email || "Team")}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-foreground">{member.full_name || member.email || "Team member"}</p><p className="text-[10px] capitalize text-muted-foreground">{formatRole(member.user_roles?.[0]?.role ?? "sales_exec")}</p></div><span className="text-xs font-medium text-foreground">{leads.filter((lead) => lead.assigned_to === member.user_id).length}</span></div>)}</div> : <EmptyInline text="Your team will show here." />}</section></div></div>
@@ -728,14 +791,13 @@ function ClientsPage({ organizations, leads, onCreate, onEdit, onToggleStatus, o
   </div>;
 }
 
-function LeadsPage({ page, isMaster, leads, members, stats, search, setSearch, statusFilter, setStatusFilter, qualityFilter, setQualityFilter, dateFilter, setDateFilter, view, setView, selectedIds, setSelectedIds, statusOptions, onOpenLead, onCreate, onExport, onImport, onBulkUpdate, bulkAssignee, setBulkAssignee, membersById }: {
+function LeadsPage({ page, isMaster, leads, members, stats, search, setSearch, statusFilter, setStatusFilter, qualityFilter, setQualityFilter, dateFilter, setDateFilter, view, setView, selectedIds, setSelectedIds, statusOptions, onOpenLead, onCreate, onExport, onImport, onBulkUpdate, onBulkDelete, onMoveLead, bulkAssignee, setBulkAssignee, membersById }: {
   page: PageKey; isMaster: boolean; leads: Lead[]; members: Member[]; stats: ReturnType<typeof getLeadStats>; search: string; setSearch: (v: string) => void; statusFilter: string; setStatusFilter: (v: string) => void;
   qualityFilter: string; setQualityFilter: (v: string) => void; dateFilter: string; setDateFilter: (v: string) => void; view: "table" | "kanban"; setView: (v: "table" | "kanban") => void;
   selectedIds: string[]; setSelectedIds: (v: string[] | ((ids: string[]) => string[])) => void; statusOptions: string[]; onOpenLead: (lead: Lead) => void; onCreate: () => void; onExport: () => void;
   onImport: (file?: File) => void; onBulkUpdate: (changes: Database["public"]["Tables"]["leads"]["Update"]) => void; bulkAssignee: string; setBulkAssignee: (v: string) => void; membersById: Record<string, Member>;
+  onBulkDelete: () => void; onMoveLead: (lead: Lead, status: string) => void;
 }) {
-  const [filterStatusOpen, setFilterStatusOpen] = useState(false);
-  const [filterQualityOpen, setFilterQualityOpen] = useState(false);
   const isPipeline = page === "pipeline";
   const activeFilterCount = Number(statusFilter !== "All statuses") + Number(qualityFilter !== "All qualities") + Number(dateFilter !== "Last 30 days");
   const leadTypes = isMaster ? ["New Lead", "Contacted", "Qualified", "Converted"] : ["New Lead", "Contacted", "Qualified", "Converted"];
@@ -748,31 +810,32 @@ function LeadsPage({ page, isMaster, leads, members, stats, search, setSearch, s
       <Button variant="outline" size="sm" onClick={() => { setStatusFilter("All statuses"); setQualityFilter("All qualities"); setDateFilter("Last 30 days"); }}><ListFilter className="size-4" /> {activeFilterCount ? `${activeFilterCount} filters` : "Filters"}</Button>
       <div className="ml-auto flex rounded-md border border-border bg-muted/50 p-0.5"><Button size="sm" variant={view === "table" ? "secondary" : "ghost"} className="h-7 px-2.5 text-[11px]" onClick={() => setView("table")}><FileSpreadsheet className="size-3.5" /> Table</Button><Button size="sm" variant={view === "kanban" ? "secondary" : "ghost"} className="h-7 px-2.5 text-[11px]" onClick={() => setView("kanban")}><Workflow className="size-3.5" /> Board</Button></div>
     </div>
-    {selectedIds.length > 0 && <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/[0.035] px-4 py-3"><span className="mr-2 text-xs font-medium text-foreground">{selectedIds.length} selected</span><select aria-label="Bulk update status" className="h-8 rounded-md border border-input bg-background px-2 text-xs" defaultValue="" onChange={(event) => { if (event.target.value) onBulkUpdate({ status: event.target.value }); }}><option value="">Change status…</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select><select aria-label="Bulk assign lead" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={bulkAssignee} onChange={(event) => { setBulkAssignee(event.target.value); if (event.target.value) onBulkUpdate({ assigned_to: event.target.value }); }}><option value="">Assign to…</option>{members.filter((member) => member.is_active && member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select><Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>Clear</Button></div>}
-    {view === "kanban" ? <KanbanBoard leads={leads} membersById={membersById} onOpen={onOpenLead} onMove={(lead, status) => onBulkUpdateForOne(lead, status, onBulkUpdate)} selectedIds={selectedIds} setSelectedIds={setSelectedIds} /> : <div className="overflow-x-auto"><table className="crm-table w-full min-w-[850px] text-left text-xs"><thead><tr><th className="w-10 px-4 py-3"><input aria-label="Select all visible leads" type="checkbox" checked={Boolean(leads.length && leads.every((lead) => selectedIds.includes(lead.id)))} onChange={(event) => setSelectedIds(event.target.checked ? [...new Set([...selectedIds, ...leads.map((lead) => lead.id)])] : selectedIds.filter((id) => !leads.some((lead) => lead.id === id)))} /></th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Contact</th><th className="px-3 py-3">Source</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Quality</th><th className="px-3 py-3">Assignee</th><th className="px-3 py-3">Added</th><th className="px-3 py-3">Score</th></tr></thead><tbody>{leads.map((lead) => <tr key={lead.id} className="cursor-pointer hover:bg-muted/25" onClick={() => onOpenLead(lead)}><td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><input aria-label={`Select ${lead.full_name}`} type="checkbox" checked={selectedIds.includes(lead.id)} onChange={(event) => setSelectedIds(event.target.checked ? [...selectedIds, lead.id] : selectedIds.filter((id) => id !== lead.id))} /></td><td className="px-3 py-3"><span className="font-medium text-foreground">{lead.full_name}</span><span className="block pt-1 text-[10px] text-muted-foreground">{lead.city || "—"}</span></td><td className="px-3 py-3"><span className="text-foreground">{lead.phone || "—"}</span><span className="block pt-1 text-[10px] text-muted-foreground">{lead.email || ""}</span></td><td className="px-3 py-3">{lead.source || "Manual"}</td><td className="px-3 py-3"><StatusPill label={lead.status} /></td><td className="px-3 py-3"><QualityPill quality={lead.quality} /></td><td className="px-3 py-3 text-muted-foreground">{lead.assigned_to ? memberName(membersById[lead.assigned_to], lead.assigned_to) : "Unassigned"}</td><td className="px-3 py-3 text-muted-foreground">{formatDate(lead.created_at)}</td><td className="px-3 py-3"><span className="rounded bg-muted px-2 py-1 text-[10px]">{lead.lead_score}</span></td></tr>)}</tbody></table>{!leads.length && <EmptyState title="No leads found" message="Try another search or create a new lead for this workspace." action={!isMaster ? <Button size="sm" onClick={onCreate}><Plus className="size-4" /> Add lead</Button> : undefined} />}</div>}
+    {selectedIds.length > 0 && <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/[0.035] px-4 py-3"><span className="mr-2 text-xs font-medium text-foreground">{selectedIds.length} selected</span><select aria-label="Bulk update status" className="h-8 rounded-md border border-input bg-background px-2 text-xs" defaultValue="" onChange={(event) => { if (event.target.value) onBulkUpdate({ status: event.target.value }); }}><option value="">Change status…</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select><select aria-label="Bulk assign lead" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={bulkAssignee} onChange={(event) => { setBulkAssignee(event.target.value); if (event.target.value) onBulkUpdate({ assigned_to: event.target.value }); }}><option value="">Assign to…</option>{members.filter((member) => member.is_active && member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select><Button variant="outline" size="sm" className="text-destructive" onClick={onBulkDelete}><X className="size-4" /> Delete selected</Button><Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>Clear</Button></div>}
+    {view === "kanban" ? <KanbanBoard leads={leads} membersById={membersById} onOpen={onOpenLead} onMove={onMoveLead} selectedIds={selectedIds} setSelectedIds={setSelectedIds} statusOptions={statusOptions} /> : <div className="overflow-x-auto"><table className="crm-table w-full min-w-[850px] text-left text-xs"><thead><tr><th className="w-10 px-4 py-3"><input aria-label="Select all visible leads" type="checkbox" checked={Boolean(leads.length && leads.every((lead) => selectedIds.includes(lead.id)))} onChange={(event) => setSelectedIds(event.target.checked ? [...new Set([...selectedIds, ...leads.map((lead) => lead.id)])] : selectedIds.filter((id) => !leads.some((lead) => lead.id === id)))} /></th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Contact</th><th className="px-3 py-3">Source</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Quality</th><th className="px-3 py-3">Assignee</th><th className="px-3 py-3">Added</th><th className="px-3 py-3">Score</th></tr></thead><tbody>{leads.map((lead) => <tr key={lead.id} className="cursor-pointer hover:bg-muted/25" onClick={() => onOpenLead(lead)}><td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><input aria-label={`Select ${lead.full_name}`} type="checkbox" checked={selectedIds.includes(lead.id)} onChange={(event) => setSelectedIds(event.target.checked ? [...selectedIds, lead.id] : selectedIds.filter((id) => id !== lead.id))} /></td><td className="px-3 py-3"><span className="font-medium text-foreground">{lead.full_name}</span><span className="block pt-1 text-[10px] text-muted-foreground">{lead.city || "—"}</span></td><td className="px-3 py-3"><span className="text-foreground">{lead.phone || "—"}</span><span className="block pt-1 text-[10px] text-muted-foreground">{lead.email || ""}</span></td><td className="px-3 py-3">{lead.source || "Manual"}</td><td className="px-3 py-3"><StatusPill label={lead.status} /></td><td className="px-3 py-3"><QualityPill quality={lead.quality} /></td><td className="px-3 py-3 text-muted-foreground">{lead.assigned_to ? memberName(membersById[lead.assigned_to], lead.assigned_to) : "Unassigned"}</td><td className="px-3 py-3 text-muted-foreground">{formatDate(lead.created_at)}</td><td className="px-3 py-3"><span className="rounded bg-muted px-2 py-1 text-[10px]">{lead.lead_score}</span></td></tr>)}</tbody></table>{!leads.length && <EmptyState title="No leads found" message="Try another search or create a new lead for this workspace." action={!isMaster ? <Button size="sm" onClick={onCreate}><Plus className="size-4" /> Add lead</Button> : undefined} />}</div>}
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-[11px] text-muted-foreground"><span>Showing {leads.length} leads · {stats.total} in this workspace</span><span>Client data stays within its workspace.</span></div></section>
   </div>;
 }
 
 function onBulkUpdateForOne(lead: Lead, status: string, updater: (changes: Database["public"]["Tables"]["leads"]["Update"]) => void) { void lead; updater({ status }); }
 
-function KanbanBoard({ leads, membersById, onOpen, onMove, selectedIds, setSelectedIds }: {
+function KanbanBoard({ leads, membersById, onOpen, onMove, selectedIds, setSelectedIds, statusOptions }: {
   leads: Lead[]; membersById: Record<string, Member>; onOpen: (lead: Lead) => void; onMove: (lead: Lead, status: string) => void;
+  statusOptions: string[];
   selectedIds: string[]; setSelectedIds: (v: string[] | ((ids: string[]) => string[])) => void;
 }) {
   const [overColumn, setOverColumn] = useState("");
-  return <div className="flex gap-3 overflow-x-auto p-4">{STATUSES.map((status) => {
+  return <div className="flex gap-3 overflow-x-auto p-4">{statusOptions.map((status) => {
     const cards = leads.filter((lead) => lead.status === status);
     return <section key={status} onDragOver={(event) => { event.preventDefault(); setOverColumn(status); }} onDragLeave={() => setOverColumn("")} onDrop={(event) => { event.preventDefault(); const lead = leads.find((item) => item.id === event.dataTransfer.getData("text/lead-id")); if (lead && lead.status !== status) onMove(lead, status); setOverColumn(""); }} className={`w-[245px] shrink-0 rounded-md border p-2.5 ${overColumn === status ? "border-primary bg-primary/5" : "border-border bg-muted/35"}`}>
       <div className="mb-3 flex items-center justify-between px-1"><h3 className="text-xs font-semibold text-foreground">{status}</h3><span className="rounded-full bg-card px-2 py-0.5 text-[10px] text-muted-foreground">{cards.length}</span></div>
-      <div className="space-y-2">{cards.map((lead) => <article key={lead.id} draggable onDragStart={(event) => event.dataTransfer.setData("text/lead-id", lead.id)} className="crm-card cursor-grab p-3 active:cursor-grabbing"><div className="flex items-start justify-between gap-2"><button onClick={() => onOpen(lead)} className="text-left text-xs font-medium text-foreground hover:text-primary">{lead.full_name}</button><input aria-label={`Select ${lead.full_name}`} type="checkbox" checked={selectedIds.includes(lead.id)} onChange={(event) => setSelectedIds(event.target.checked ? [...selectedIds, lead.id] : selectedIds.filter((id) => id !== lead.id))} /></div><p className="mt-1.5 text-[10px] text-muted-foreground">{lead.phone || lead.email || "No contact details"}</p><div className="mt-3 flex items-center justify-between"><QualityPill quality={lead.quality} /><span className="text-[10px] text-muted-foreground">Score {lead.lead_score}</span></div><p className="mt-2 truncate text-[10px] text-muted-foreground">{lead.assigned_to ? memberName(membersById[lead.assigned_to], lead.assigned_to) : "Unassigned"}</p><select aria-label={`Move ${lead.full_name} to another status`} className="mt-2 h-7 w-full rounded border border-input bg-background px-2 text-[10px]" value={lead.status} onChange={(event) => onMove(lead, event.target.value)}>{STATUSES.map((option) => <option key={option}>{option}</option>)}</select></article>)}{!cards.length && <p className="rounded border border-dashed border-border px-2 py-5 text-center text-[10px] text-muted-foreground">No leads</p>}</div>
+      <div className="space-y-2">{cards.map((lead) => <article key={lead.id} draggable onDragStart={(event) => event.dataTransfer.setData("text/lead-id", lead.id)} className="crm-card cursor-grab p-3 active:cursor-grabbing"><div className="flex items-start justify-between gap-2"><button onClick={() => onOpen(lead)} className="text-left text-xs font-medium text-foreground hover:text-primary">{lead.full_name}</button><input aria-label={`Select ${lead.full_name}`} type="checkbox" checked={selectedIds.includes(lead.id)} onChange={(event) => setSelectedIds(event.target.checked ? [...selectedIds, lead.id] : selectedIds.filter((id) => id !== lead.id))} /></div><p className="mt-1.5 text-[10px] text-muted-foreground">{lead.phone || lead.email || "No contact details"}</p><div className="mt-3 flex items-center justify-between"><QualityPill quality={lead.quality} /><span className="text-[10px] text-muted-foreground">Score {lead.lead_score}</span></div><p className="mt-2 truncate text-[10px] text-muted-foreground">{lead.assigned_to ? memberName(membersById[lead.assigned_to], lead.assigned_to) : "Unassigned"}</p><select aria-label={`Move ${lead.full_name} to another status`} className="mt-2 h-7 w-full rounded border border-input bg-background px-2 text-[10px]" value={lead.status} onChange={(event) => onMove(lead, event.target.value)}>{statusOptions.map((option) => <option key={option}>{option}</option>)}</select></article>)}{!cards.length && <p className="rounded border border-dashed border-border px-2 py-5 text-center text-[10px] text-muted-foreground">No leads</p>}</div>
     </section>;
   })}</div>;
 }
 
-function LeadDetail({ lead, members, notes, activities, onUpdate, onDelete, noteDraft, setNoteDraft, onAddNote, followUpDraft, setFollowUpDraft, onSchedule }: {
+function LeadDetail({ lead, members, notes, activities, onUpdate, onDelete, onEdit, canManageLeads, noteDraft, setNoteDraft, onAddNote, followUpDraft, setFollowUpDraft, onSchedule }: {
   lead: Lead; members: Member[]; notes: LeadNote[]; activities: LeadActivity[]; onUpdate: (lead: Lead, changes: Database["public"]["Tables"]["leads"]["Update"], eventName?: string) => void;
-  onDelete: (lead: Lead) => void; noteDraft: string; setNoteDraft: (value: string) => void; onAddNote: (event: FormEvent<HTMLFormElement>) => void;
+  onDelete: (lead: Lead) => void; onEdit: (lead: Lead) => void; canManageLeads: boolean; noteDraft: string; setNoteDraft: (value: string) => void; onAddNote: (event: FormEvent<HTMLFormElement>) => void;
   followUpDraft: { scheduledAt: string; note: string }; setFollowUpDraft: (value: { scheduledAt: string; note: string }) => void; onSchedule: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [section, setSection] = useState<"details" | "activity">("details");
@@ -782,8 +845,8 @@ function LeadDetail({ lead, members, notes, activities, onUpdate, onDelete, note
       ["Location", [lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "Not added"], ["Source", lead.source], ["Score", `${lead.lead_score} / 100`],
       ["Campaign", lead.campaign_name || "Not added"], ["Ad set", lead.ad_set_name || "Not added"], ["Ad", lead.ad_name || "Not added"],
     ].map(([label, value]) => <div key={label}><p className="text-[10px] font-medium uppercase text-muted-foreground">{label}</p><p className="mt-1 break-words text-xs font-medium text-foreground">{value}</p></div>)}</div>
-      <div className="grid gap-3 sm:grid-cols-3"><Field label="Lead status"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.status} onChange={(event) => onUpdate(lead, { status: event.target.value }, "Lead status updated.")}>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field><Field label="Lead quality"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.quality} onChange={(event) => onUpdate(lead, { quality: event.target.value }, "Lead quality updated.")}>{QUALITIES.map((quality) => <option key={quality}>{quality}</option>)}</select></Field><Field label="Assign executive"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.assigned_to ?? ""} onChange={(event) => onUpdate(lead, { assigned_to: event.target.value || null }, "Lead assignment updated.")}><option value="">Unassigned</option>{members.filter((member) => member.is_active && member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select></Field></div>
-      <div className="flex flex-wrap gap-2">{lead.phone && <Button variant="outline" size="sm" asChild><a href={`tel:${encodeURIComponent(lead.phone)}`}><Phone className="size-4" /> Call</a></Button>}{(lead.whatsapp_number || lead.phone) && <Button variant="outline" size="sm" asChild><a target="_blank" rel="noreferrer" href={`https://wa.me/${encodeURIComponent((lead.whatsapp_number || lead.phone || "").replace(/[^0-9]/g, ""))}`}><MessageSquareText className="size-4" /> WhatsApp</a></Button>}{lead.email && <Button variant="outline" size="sm" asChild><a href={`mailto:${encodeURIComponent(lead.email)}`}><Mail className="size-4" /> Email</a></Button>}<Button variant="ghost" size="sm" className="ml-auto text-destructive hover:text-destructive" onClick={() => onDelete(lead)}><X className="size-4" /> Remove lead</Button></div>
+      <div className={`grid gap-3 ${canManageLeads ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}><Field label="Lead status"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.status} onChange={(event) => onUpdate(lead, { status: event.target.value }, "Lead status updated.")}>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field><Field label="Lead quality"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.quality} onChange={(event) => onUpdate(lead, { quality: event.target.value }, "Lead quality updated.")}>{QUALITIES.map((quality) => <option key={quality}>{quality}</option>)}</select></Field>{canManageLeads && <Field label="Assign executive"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.assigned_to ?? ""} onChange={(event) => onUpdate(lead, { assigned_to: event.target.value || null }, "Lead assignment updated.")}><option value="">Unassigned</option>{members.filter((member) => member.is_active && member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select></Field>}</div>
+      <div className="flex flex-wrap gap-2">{lead.phone && <Button variant="outline" size="sm" asChild><a href={`tel:${encodeURIComponent(lead.phone)}`}><Phone className="size-4" /> Call</a></Button>}{(lead.whatsapp_number || lead.phone) && <Button variant="outline" size="sm" asChild><a target="_blank" rel="noreferrer" href={`https://wa.me/${encodeURIComponent((lead.whatsapp_number || lead.phone || "").replace(/[^0-9]/g, ""))}`}><MessageSquareText className="size-4" /> WhatsApp</a></Button>}{lead.email && <Button variant="outline" size="sm" asChild><a href={`mailto:${encodeURIComponent(lead.email)}`}><Mail className="size-4" /> Email</a></Button>}{canManageLeads && <Button variant="outline" size="sm" onClick={() => onEdit(lead)}><Settings2 className="size-4" /> Edit details</Button>}{canManageLeads && <Button variant="ghost" size="sm" className="ml-auto text-destructive hover:text-destructive" onClick={() => onDelete(lead)}><X className="size-4" /> Remove lead</Button>}</div>
       <div className="flex gap-4 border-b border-border"><button onClick={() => setSection("details")} className={`pb-2 text-xs font-medium ${section === "details" ? "border-b-2 border-primary text-primary" : "text-muted-foreground"}`}>Notes & follow-up</button><button onClick={() => setSection("activity")} className={`pb-2 text-xs font-medium ${section === "activity" ? "border-b-2 border-primary text-primary" : "text-muted-foreground"}`}>Activity timeline</button></div>
       {section === "details" ? <div className="space-y-5"><form onSubmit={onAddNote} className="space-y-2"><Label htmlFor="lead-note" className="text-xs">Internal note</Label><Textarea id="lead-note" value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Add a call summary or sales note…" maxLength={5000} rows={3} /><div className="flex justify-end"><Button size="sm" disabled={!noteDraft.trim()}><Plus className="size-4" /> Add note</Button></div></form><div className="space-y-2">{notes.map((note) => <div key={note.id} className="rounded-md border border-border p-3"><p className="whitespace-pre-wrap text-xs text-foreground">{note.content}</p><p className="mt-2 text-[10px] text-muted-foreground">{formatDateTime(note.created_at)}</p></div>)}{!notes.length && <p className="text-xs text-muted-foreground">No notes recorded.</p>}</div><form onSubmit={onSchedule} className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-[1fr_1fr_auto]"><Field label="Next follow-up"><Input type="datetime-local" min={new Date().toISOString().slice(0, 16)} value={followUpDraft.scheduledAt} onChange={(event) => setFollowUpDraft({ ...followUpDraft, scheduledAt: event.target.value })} required /></Field><Field label="Reminder note"><Input value={followUpDraft.note} onChange={(event) => setFollowUpDraft({ ...followUpDraft, note: event.target.value })} maxLength={500} placeholder="Call about proposal" /></Field><div className="flex items-end"><Button size="sm"><CalendarClock className="size-4" /></Button></div></form>{lead.follow_up_at && <p className="text-[11px] text-muted-foreground">Latest follow-up: {formatDateTime(lead.follow_up_at)}</p>}</div>
         : <div className="space-y-3">{activities.map((activity) => <div key={activity.id} className="flex gap-3"><span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Activity className="size-3.5" /></span><div><p className="text-xs text-foreground">{activity.description}</p><p className="mt-1 text-[10px] capitalize text-muted-foreground">{activity.activity_type.replaceAll("_", " ")} · {formatDateTime(activity.created_at)}</p></div></div>)}{notes.map((note) => <div key={note.id} className="flex gap-3"><span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground"><MessageSquareText className="size-3.5" /></span><div><p className="text-xs text-foreground">Internal note added</p><p className="mt-1 text-[10px] text-muted-foreground">{formatDateTime(note.created_at)}</p></div></div>)}{!activities.length && !notes.length && <p className="text-xs text-muted-foreground">Lead activity will appear here.</p>}</div>}
@@ -792,15 +855,15 @@ function LeadDetail({ lead, members, notes, activities, onUpdate, onDelete, note
   </div>;
 }
 
-function TeamPage({ isMaster, organizations, members, leads, followUps, onInvite }: { isMaster: boolean; organizations: Organization[]; members: Member[]; leads: Lead[]; followUps: FollowUp[]; onInvite: () => void }) {
-  const teamMembers = members.filter((member) => member.is_active);
+function TeamPage({ isMaster, organizations, members, leads, followUps, onInvite, onToggleMember }: { isMaster: boolean; organizations: Organization[]; members: Member[]; leads: Lead[]; followUps: FollowUp[]; onInvite: () => void; onToggleMember: (member: Member) => void }) {
+  const teamMembers = members;
   return <div className="space-y-6"><PageIntro eyebrow="SALES ORGANIZATION" title={isMaster ? "Client teams" : "Sales team"} description={isMaster ? "View membership and lead assignments by client." : "Track team access and lead ownership in your workspace."} action={!isMaster ? <Button onClick={onInvite}><Plus className="size-4" /> Invite executive</Button> : undefined} />
-    {isMaster ? organizations.map((organization) => { const orgMembers = teamMembers.filter((member) => member.organization_id === organization.id); const orgLeads = leads.filter((lead) => lead.organization_id === organization.id); return <section className="crm-card overflow-hidden" key={organization.id}><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4"><div><p className="text-sm font-semibold text-foreground">{organization.name}</p><p className="mt-1 text-[11px] text-muted-foreground">{orgMembers.length} members · {orgLeads.length} leads</p></div><StatusPill label={organization.status} /></div><MemberTable members={orgMembers} leads={orgLeads} followUps={followUps.filter((item) => item.organization_id === organization.id)} /></section>; }) : <section className="crm-card overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4"><div><p className="text-sm font-semibold text-foreground">Workspace members</p><p className="mt-1 text-[11px] text-muted-foreground">{teamMembers.length} active team members</p></div></div><MemberTable members={teamMembers} leads={leads} followUps={followUps} /></section>}
+    {isMaster ? organizations.map((organization) => { const orgMembers = teamMembers.filter((member) => member.organization_id === organization.id); const orgLeads = leads.filter((lead) => lead.organization_id === organization.id); return <section className="crm-card overflow-hidden" key={organization.id}><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4"><div><p className="text-sm font-semibold text-foreground">{organization.name}</p><p className="mt-1 text-[11px] text-muted-foreground">{orgMembers.length} members · {orgLeads.length} leads</p></div><StatusPill label={organization.status} /></div><MemberTable members={orgMembers} leads={orgLeads} followUps={followUps.filter((item) => item.organization_id === organization.id)} onToggleMember={onToggleMember} /></section>; }) : <section className="crm-card overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4"><div><p className="text-sm font-semibold text-foreground">Workspace members</p><p className="mt-1 text-[11px] text-muted-foreground">{teamMembers.filter((member) => member.is_active).length} active of {teamMembers.length} members</p></div></div><MemberTable members={teamMembers} leads={leads} followUps={followUps} onToggleMember={onToggleMember} /></section>}
     {!members.length && <EmptyState title="No team members yet" message="Workspace team invitations will appear here." action={!isMaster ? <Button size="sm" onClick={onInvite}><Plus className="size-4" /> Invite executive</Button> : undefined} />}</div>;
 }
 
-function MemberTable({ members, leads, followUps }: { members: Member[]; leads: Lead[]; followUps: FollowUp[] }) {
-  return <div className="overflow-x-auto"><table className="crm-table w-full min-w-[600px] text-left text-xs"><thead><tr><th className="px-5 py-3">Member</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Assigned leads</th><th className="px-4 py-3">Qualified</th><th className="px-4 py-3">Converted</th><th className="px-4 py-3">Pending follow-ups</th></tr></thead><tbody>{members.map((member) => { const assigned = leads.filter((lead) => lead.assigned_to === member.user_id); const wins = assigned.filter((lead) => lead.status === "Converted").length; return <tr key={member.id}><td className="px-5 py-3"><span className="font-medium text-foreground">{member.full_name || member.email || member.user_id}</span><span className="block pt-1 text-[10px] text-muted-foreground">{member.email || "Team member"}</span></td><td className="px-4 py-3 capitalize">{formatRole(member.user_roles?.[0]?.role ?? "sales_exec")}</td><td className="px-4 py-3">{assigned.length}</td><td className="px-4 py-3">{assigned.filter((lead) => lead.status === "Qualified").length}</td><td className="px-4 py-3">{wins}{assigned.length ? <span className="ml-1 text-[10px] text-muted-foreground">({Math.round(wins / assigned.length * 100)}%)</span> : null}</td><td className="px-4 py-3">{followUps.filter((item) => item.assigned_to === member.user_id && !item.completed_at).length}</td></tr>; })}</tbody></table>{!members.length && <EmptyInline text="No matching team members." />}</div>;
+function MemberTable({ members, leads, followUps, onToggleMember }: { members: Member[]; leads: Lead[]; followUps: FollowUp[]; onToggleMember: (member: Member) => void }) {
+  return <div className="overflow-x-auto"><table className="crm-table w-full min-w-[700px] text-left text-xs"><thead><tr><th className="px-5 py-3">Member</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Assigned leads</th><th className="px-4 py-3">Qualified</th><th className="px-4 py-3">Converted</th><th className="px-4 py-3">Pending follow-ups</th><th className="px-4 py-3">Actions</th></tr></thead><tbody>{members.map((member) => { const assigned = leads.filter((lead) => lead.assigned_to === member.user_id); const wins = assigned.filter((lead) => lead.status === "Converted").length; return <tr key={member.id}><td className="px-5 py-3"><span className="font-medium text-foreground">{member.full_name || member.email || member.user_id}</span><span className="block pt-1 text-[10px] text-muted-foreground">{member.email || "Team member"}</span></td><td className="px-4 py-3 capitalize">{formatRole(member.user_roles?.[0]?.role ?? "sales_exec")}</td><td className="px-4 py-3"><StatusPill label={member.is_active ? "active" : "inactive"} /></td><td className="px-4 py-3">{assigned.length}</td><td className="px-4 py-3">{assigned.filter((lead) => lead.status === "Qualified").length}</td><td className="px-4 py-3">{wins}{assigned.length ? <span className="ml-1 text-[10px] text-muted-foreground">({Math.round(wins / assigned.length * 100)}%)</span> : null}</td><td className="px-4 py-3">{followUps.filter((item) => item.assigned_to === member.user_id && !item.completed_at).length}</td><td className="px-4 py-3"><Button size="sm" variant="outline" onClick={() => onToggleMember(member)}>{member.is_active ? "Deactivate" : "Activate"}</Button></td></tr>; })}</tbody></table>{!members.length && <EmptyInline text="No matching team members." />}</div>;
 }
 
 function FollowUpsPage({ followUps, leads, membersById, onComplete, onOpenLead }: { followUps: FollowUp[]; leads: Lead[]; membersById: Record<string, Member>; onComplete: (followUp: FollowUp) => void; onOpenLead: (id: string) => void }) {
@@ -859,7 +922,7 @@ function RecentLeads({ leads, onOpen }: { leads: Lead[]; onOpen: (lead: Lead) =>
 
 function MetricTile({ label, value, hint, icon: Icon, tone }: { label: string; value: string | number; hint: string; icon: typeof Users; tone: string }) {
   const toneClasses: Record<string, string> = { blue: "bg-primary/10 text-primary", green: "bg-chart-2/10 text-chart-2", orange: "bg-accent text-accent-foreground", violet: "bg-chart-3/10 text-chart-3", red: "bg-destructive/10 text-destructive" };
-  return <article className="crm-card min-w-0 p-4"><div className="flex items-start justify-between gap-3"><span className="min-w-0 text-[11px] font-medium text-muted-foreground">{label}</span><span className={`grid size-8 shrink-0 place-items-center rounded-md ${toneClasses[tone] ?? toneClasses.blue}`}><Icon className="size-4" /></span></div><p className="mt-3 truncate text-[25px] font-semibold leading-none text-foreground">{value}</p><p className="mt-2 truncate text-[10px] text-muted-foreground">{hint}</p></article>;
+  return <article className="crm-card min-w-0 p-4"><div className="flex items-start justify-between gap-3"><span className="min-w-0 text-[11px] font-medium text-muted-foreground">{label}</span><span className={`grid size-8 shrink-0 place-items-center rounded-md ${toneClasses[tone] ?? toneClasses["blue"]}`}><Icon className="size-4" /></span></div><p className="mt-3 truncate text-[25px] font-semibold leading-none text-foreground">{value}</p><p className="mt-2 truncate text-[10px] text-muted-foreground">{hint}</p></article>;
 }
 
 function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) {
@@ -887,11 +950,6 @@ function StatusPill({ label }: { label: string }) {
 function QualityPill({ quality }: { quality: string }) {
   const cls = quality === "Hot" ? "bg-destructive/10 text-destructive" : quality === "Warm" ? "bg-accent text-accent-foreground" : quality === "Junk" ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary";
   return <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium ${cls}`}><span className="size-1.5 rounded-full bg-current" />{quality}</span>;
-}
-
-function Cell({ index }: { index: number }) {
-  const colors = ["var(--primary)", "var(--chart-2)", "var(--chart-4)", "var(--chart-5)", "var(--chart-3)"];
-  return <svg viewBox="0 0 10 10" className="size-2.5"><circle cx="5" cy="5" r="5" fill={colors[index % colors.length]} /></svg>;
 }
 
 function EmptyChart({ label }: { label: string }) {
