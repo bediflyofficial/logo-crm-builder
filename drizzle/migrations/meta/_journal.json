@@ -29,6 +29,27 @@
       "when": 1794739373007,
       "tag": "0003_bedifly_employee_directory_and_lead_scoring",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794740679829,
+      "tag": "0004_verified_bedifly_admin_bootstrap",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794740762637,
+      "tag": "0005_enforce_confirmed_admin_bootstrap",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794741075012,
+      "tag": "0006_respect_suspended_workspace_access",
+      "breakpoints": true
     }
   ]
 }
