@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const META_PERMISSIONS = ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read"];
+export const META_PERMISSIONS = ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read", "business_management"];
 
 export function metaConfig() {
   const appId = process.env["META_APP_ID"];
@@ -8,11 +8,13 @@ export function metaConfig() {
   const version = process.env["META_GRAPH_API_VERSION"];
   const redirectUri = process.env["META_REDIRECT_URI"];
   const encryptionSecret = process.env["META_TOKEN_ENCRYPTION_KEY"];
-  if (!appId || !appSecret || !version || !redirectUri || !encryptionSecret) throw new Error("Facebook connection needs Meta Developer App configuration.");
+  const loginConfigId = process.env["META_LOGIN_CONFIG_ID"];
+  if (!appId || !appSecret || !version || !redirectUri || !encryptionSecret || !loginConfigId) throw new Error("Facebook connection needs Meta Developer App configuration.");
   if (!/^v\d+\.\d+$/.test(version)) throw new Error("Set a supported Meta Graph API version, such as the version shown in your Developer App.");
+  if (!/^\d{5,25}$/.test(loginConfigId)) throw new Error("META_LOGIN_CONFIG_ID must be the numeric Configuration ID from Facebook Login for Business.");
   const redirect = new URL(redirectUri);
   if (redirect.protocol !== "https:" || redirect.pathname !== "/api/public/meta/callback" || redirect.search || redirect.hash) throw new Error("The Meta callback must be the HTTPS /api/public/meta/callback address for this CRM.");
-  return { appId, appSecret, version, redirectUri, encryptionSecret };
+  return { appId, appSecret, version, redirectUri, encryptionSecret, loginConfigId };
 }
 
 export function graphVersion() {

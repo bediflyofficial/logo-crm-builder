@@ -25,7 +25,7 @@ export const getMetaOverview = createServerFn({ method: "POST" })
     for (const result of [connections, assets, logs, events]) if (result.error) throw new Error("Meta integration records could not be loaded.");
     const settings = data.organizationId ? await context.supabase.from("meta_integration_settings").select("*").eq("organization_id", data.organizationId).maybeSingle() : null;
     if (settings?.error) throw new Error("Meta settings could not be loaded.");
-    const required = ["META_APP_ID", "META_APP_SECRET", "META_GRAPH_API_VERSION", "META_REDIRECT_URI", "META_WEBHOOK_VERIFY_TOKEN", "META_TOKEN_ENCRYPTION_KEY"];
+    const required = ["META_APP_ID", "META_APP_SECRET", "META_GRAPH_API_VERSION", "META_REDIRECT_URI", "META_WEBHOOK_VERIFY_TOKEN", "META_TOKEN_ENCRYPTION_KEY", "META_LOGIN_CONFIG_ID"];
     return { connections: connections.data ?? [], assets: assets.data ?? [], logs: logs.data ?? [], events: events.data ?? [], settings: settings?.data ?? null, missingConfiguration: required.filter((name) => !process.env[name]), oauthImplemented: true, processorImplemented: true };
   });
 
@@ -57,7 +57,7 @@ export const startMetaOAuth = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const permission = await context.supabase.rpc("is_org_admin", { _organization_id: data.organizationId });
     if (permission.error || !permission.data) throw new Error("Administrator access is required.");
-    const { metaConfig, META_PERMISSIONS } = await import("@/lib/meta-api.server");
+    const { metaConfig } = await import("@/lib/meta-api.server");
     const config = metaConfig();
     if (new URL(config.redirectUri).origin !== data.origin) throw new Error("Open the CRM at its configured Facebook callback address before connecting.");
     const { hashMetaState, newMetaState } = await import("@/lib/meta-crypto.server");
@@ -66,7 +66,7 @@ export const startMetaOAuth = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin.from("meta_oauth_sessions").insert({ organization_id: data.organizationId, user_id: context.userId, state_hash: hashMetaState(state), redirect_uri: config.redirectUri, expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
     if (error) throw new Error("Facebook authorization could not be started.");
     const url = new URL(`https://www.facebook.com/${config.version}/dialog/oauth`);
-    url.search = new URLSearchParams({ client_id: config.appId, redirect_uri: config.redirectUri, state, scope: META_PERMISSIONS.join(","), response_type: "code" }).toString();
+    url.search = new URLSearchParams({ client_id: config.appId, redirect_uri: config.redirectUri, state, config_id: config.loginConfigId, response_type: "code", override_default_response_type: "true" }).toString();
     return { authorizationUrl: url.toString(), state };
   });
 
@@ -92,7 +92,7 @@ export const completeMetaOAuth = createServerFn({ method: "POST" })
     if (error || !connection) throw new Error("Facebook authorization succeeded but the connection could not be saved. Connect again.");
     const { error: auditError } = await context.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: context.userId, action: "meta_connected", entity_type: "meta_connection", entity_id: connection.id });
     if (auditError) throw new Error("Facebook is connected, but its audit entry could not be saved.");
-    return { connected: true, connectionId: connection.id, missingPermissions: ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read"].filter((item) => !granted.includes(item)) };
+    return { connected: true, connectionId: connection.id, missingPermissions: ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read", "business_management"].filter((item) => !granted.includes(item)) };
   });
 
 export const refreshMetaConnectionAssets = createServerFn({ method: "POST" })
@@ -133,4 +133,15 @@ export const disconnectMetaConnection = createServerFn({ method: "POST" })
     const { error: auditError } = await context.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: context.userId, action: "meta_disconnected", entity_type: "meta_connection", entity_id: connection.id });
     if (auditError) throw new Error("Facebook is disconnected but its audit entry could not be saved.");
     return { disconnected: true };
+  });
+export const logMetaOAuthError = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ organizationId: z.string().uuid(), message: z.string().min(1).max(500) }).parse(input))
+  .handler(async ({ context, data }) => {
+    const permission = await context.supabase.rpc("is_org_admin", { _organization_id: data.organizationId });
+    if (permission.error || !permission.data) throw new Error("Administrator access is required.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("meta_sync_logs").insert({ organization_id: data.organizationId, sync_type: "oauth", status: "failed", records_processed: 0, error_message: data.message });
+    if (error) throw new Error("Facebook sign-in error could not be logged.");
+    return { logged: true };
   });

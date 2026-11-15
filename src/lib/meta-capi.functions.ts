@@ -136,7 +136,7 @@ export const disconnectCapi = createServerFn({ method: "POST" })
     return { disconnected: true };
   });
 
-const APP_SECRETS = ["META_APP_ID", "META_APP_SECRET", "META_GRAPH_API_VERSION", "META_REDIRECT_URI", "META_WEBHOOK_VERIFY_TOKEN", "META_TOKEN_ENCRYPTION_KEY"] as const;
+const APP_SECRETS = ["META_APP_ID", "META_APP_SECRET", "META_GRAPH_API_VERSION", "META_REDIRECT_URI", "META_WEBHOOK_VERIFY_TOKEN", "META_TOKEN_ENCRYPTION_KEY", "META_LOGIN_CONFIG_ID"] as const;
 
 export const getMetaAppStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

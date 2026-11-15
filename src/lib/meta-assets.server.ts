@@ -33,6 +33,8 @@ export async function refreshMetaAssets(organizationId: string, connectionId: st
     return asset.id;
   };
   try {
+    try { for (const business of await metaList("me/businesses", token, "id,name,verification_status")) await save(business, "business"); }
+    catch (error) { if (error instanceof MetaApiError && [4, 17, 32, 613].includes(error.code ?? 0)) throw error; warnings.push(error instanceof Error ? error.message : "Business portfolios could not be retrieved."); }
     const pages = await metaList("me/accounts", token, "id,name,access_token,instagram_business_account{id,username}");
     for (const raw of pages) {
       const pageId = await save(raw, "page");
