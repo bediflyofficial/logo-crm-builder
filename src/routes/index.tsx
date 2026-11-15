@@ -62,7 +62,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
 import { createClientWorkspace, ensureBediflyAdminAccess, inviteSalesExecutive } from "@/lib/crm.functions";
-import { hasCrmWorkspaceAccess, resolveWorkspaceSelection } from "@/lib/crm-access";
+import { hasCrmWorkspaceAccess, isWithinDateFilter, resolveWorkspaceSelection } from "@/lib/crm-access";
+import { createXlsx, normalizeHeader, normalizeLeadPhone, parseCsv, parseLeadDate, parseXlsx } from "@/lib/crm-spreadsheets";
 import type { Database } from "@/integrations/supabase/types";
 import bediflyLogo from "@/assets/bedifly-logo-trim.png.asset.json";
 
@@ -98,14 +99,14 @@ const leadSchema = z.object({
   full_name: z.string().trim().min(2, "Enter the lead’s name.").max(150),
   phone: z.string().trim().max(40), email: z.string().trim().email("Enter a valid email address.").max(254).or(z.literal("")),
   whatsapp_number: z.string().trim().max(40), city: z.string().trim().max(120), state: z.string().trim().max(120),
-  country: z.string().trim().max(120), source: z.string().trim().min(1).max(120), campaign_name: z.string().trim().max(160),
-  ad_set_name: z.string().trim().max(160), ad_name: z.string().trim().max(160), status: z.string().trim().min(1).max(100),
+  country: z.string().trim().max(120), source: z.string().trim().min(1).max(120), form_name: z.string().trim().max(160), source_reference_id: z.string().trim().max(200), campaign_name: z.string().trim().max(160),
+  ad_set_name: z.string().trim().max(160), ad_name: z.string().trim().max(160), lead_created_at: z.string().trim().max(10), status: z.string().trim().min(1).max(100),
   quality: z.enum(QUALITIES), assigned_to: z.string(), lead_value: z.string().refine((value) => value === "" || (Number.isFinite(Number(value)) && Number(value) >= 0), "Enter a positive lead value."),
 });
 
 const emptyLead = {
   full_name: "", phone: "", email: "", whatsapp_number: "", city: "", state: "", country: "", source: "Manual",
-  campaign_name: "", ad_set_name: "", ad_name: "", status: "New Lead", quality: "Warm" as (typeof QUALITIES)[number], assigned_to: "", lead_value: "",
+  form_name: "", source_reference_id: "", campaign_name: "", ad_set_name: "", ad_name: "", lead_created_at: "", status: "New Lead", quality: "Warm" as (typeof QUALITIES)[number], assigned_to: "", lead_value: "",
 };
 
 export const Route = createFileRoute("/")({
@@ -154,6 +155,8 @@ function BediflyCRM() {
   const [sourceFilter, setSourceFilter] = useState("All sources");
   const [assigneeFilter, setAssigneeFilter] = useState("All executives");
   const [dateFilter, setDateFilter] = useState("Last 30 days");
+  const [customDateStart, setCustomDateStart] = useState("");
+  const [customDateEnd, setCustomDateEnd] = useState("");
   const [view, setView] = useState<"table" | "kanban">("table");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
@@ -177,9 +180,9 @@ function BediflyCRM() {
   const activeOrganization = organizations.find((organization) => organization.id === activeOrganizationId) ?? organizations[0] ?? null;
   const membersById = useMemo(() => Object.fromEntries(members.map((member) => [member.user_id, member])), [members]);
   const scopedLeads = useMemo(() => isMaster && activeOrganizationId ? allLeads.filter((lead) => lead.organization_id === activeOrganizationId) : allLeads, [allLeads, isMaster, activeOrganizationId]);
+  const sourceOptions = useMemo(() => Array.from(new Set(scopedLeads.map((lead) => lead.source).filter(Boolean))).sort(), [scopedLeads]);
   const visibleLeads = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const cutoff = getDateCutoff(dateFilter);
     return scopedLeads.filter((lead) => {
       const matchesSearch = !term || [lead.full_name, lead.phone, lead.email, lead.source, lead.campaign_name]
         .some((value) => value?.toLowerCase().includes(term));
@@ -187,9 +190,9 @@ function BediflyCRM() {
         (qualityFilter === "All qualities" || lead.quality === qualityFilter) &&
         (sourceFilter === "All sources" || lead.source === sourceFilter) &&
         (assigneeFilter === "All executives" || (assigneeFilter === "Unassigned" ? !lead.assigned_to : lead.assigned_to === assigneeFilter)) &&
-        (!cutoff || new Date(lead.created_at) >= cutoff);
+        isWithinDateFilter(lead.lead_created_at || lead.created_at, dateFilter, customDateStart, customDateEnd);
     });
-  }, [scopedLeads, search, statusFilter, qualityFilter, sourceFilter, assigneeFilter, dateFilter]);
+  }, [scopedLeads, search, statusFilter, qualityFilter, sourceFilter, assigneeFilter, dateFilter, customDateStart, customDateEnd]);
   const stats = useMemo(() => getLeadStats(scopedLeads), [scopedLeads]);
   const chartTrend = useMemo(() => getLeadTrend(scopedLeads), [scopedLeads]);
   const statusBreakdown = useMemo(() => statusOptions.map((status) => ({ name: status, value: scopedLeads.filter((lead) => lead.status === status).length })).filter((entry) => entry.value), [statusOptions, scopedLeads]);
@@ -361,10 +364,10 @@ function BediflyCRM() {
     if (!parsed.success) { toast.error(parsed.error.issues[0]?.message ?? "Check the lead details."); return; }
     setSaving(true);
     const value = parsed.data;
-    const normalizedPhone = value.phone.replace(/[^0-9]/g, "");
+    const normalizedPhone = normalizeLeadPhone(value.phone);
     const normalizedEmail = value.email.trim().toLowerCase();
-    const duplicate = allLeads.find((existing) =>
-      (normalizedPhone.length >= 7 && (existing.phone ?? "").replace(/[^0-9]/g, "") === normalizedPhone) ||
+    const duplicate = allLeads.filter((existing) => existing.organization_id === activeOrganization.id).find((existing) =>
+      (normalizedPhone.length >= 7 && normalizeLeadPhone(existing.phone) === normalizedPhone) ||
       (normalizedEmail.length > 0 && existing.email?.toLowerCase() === normalizedEmail),
     );
     if (duplicate && !window.confirm(`A lead with similar contact details already exists: ${duplicate.full_name}. Add this as a separate lead?`)) {
@@ -380,6 +383,9 @@ function BediflyCRM() {
       state: value.state || null,
       country: value.country || null,
       source: value.source,
+      form_name: value.form_name || null,
+      source_reference_id: value.source_reference_id || null,
+      ...(value.lead_created_at ? { lead_created_at: new Date(`${value.lead_created_at}T12:00:00`).toISOString() } : {}),
       campaign_name: value.campaign_name || null,
       ad_set_name: value.ad_set_name || null,
       ad_name: value.ad_name || null,
@@ -490,7 +496,8 @@ function BediflyCRM() {
     setEditingLeadId(lead.id);
     setLeadForm({
       full_name: lead.full_name, phone: lead.phone ?? "", email: lead.email ?? "", whatsapp_number: lead.whatsapp_number ?? "",
-      city: lead.city ?? "", state: lead.state ?? "", country: lead.country ?? "", source: lead.source, campaign_name: lead.campaign_name ?? "",
+      city: lead.city ?? "", state: lead.state ?? "", country: lead.country ?? "", source: lead.source, form_name: lead.form_name ?? "", source_reference_id: lead.source_reference_id ?? "", campaign_name: lead.campaign_name ?? "",
+      lead_created_at: new Date(lead.lead_created_at).toISOString().slice(0, 10),
       ad_set_name: lead.ad_set_name ?? "", ad_name: lead.ad_name ?? "", status: lead.status,
       quality: lead.quality as (typeof QUALITIES)[number], assigned_to: lead.assigned_to ?? "", lead_value: lead.lead_value?.toString() ?? "",
     });
@@ -517,8 +524,8 @@ function BediflyCRM() {
     if (file.size > 5 * 1024 * 1024) { toast.error("Choose a CSV file smaller than 5 MB."); return; }
     setSaving(true);
     try {
-      const rows = parseCsv(await file.text()).slice(0, 501);
-      if (rows.length < 2) throw new Error("The CSV needs a header row and at least one lead.");
+      const rows = (file.name.toLowerCase().endsWith(".xlsx") ? await parseXlsx(await file.arrayBuffer()) : parseCsv(await file.text())).slice(0, 501);
+    if (rows.length < 2) throw new Error("The spreadsheet needs a header row and at least one lead.");
       const headers = rows[0]?.map(normalizeHeader) ?? [];
       const idx = (names: string[]) => headers.findIndex((header) => names.includes(header));
       const nameIndex = idx(["full name", "name", "lead name"]);
@@ -526,9 +533,18 @@ function BediflyCRM() {
       const phoneIndex = idx(["phone", "phone number", "mobile"]);
       const emailIndex = idx(["email", "email address"]);
       const sourceIndex = idx(["source", "lead source"]);
+      const formIndex = idx(["form name", "form"]);
+      const referenceIndex = idx(["source reference id", "reference id", "lead id"]);
+      const campaignIndex = idx(["campaign", "campaign name"]);
+      const adSetIndex = idx(["ad set", "ad set name"]);
+      const adIndex = idx(["ad", "ad name"]);
       const statusIndex = idx(["status", "lead status"]);
       const qualityIndex = idx(["quality", "lead quality"]);
       const cityIndex = idx(["city"]);
+      const stateIndex = idx(["state"]);
+      const countryIndex = idx(["country"]);
+      const whatsappIndex = idx(["whatsapp", "whatsapp number"]);
+      const createdDateIndex = idx(["lead created date", "created date", "lead date"]);
       const candidates = rows.slice(1, 501).map((row): LeadInsert | null => {
         const name = row[nameIndex]?.trim() ?? "";
         if (!name) return null;
@@ -537,21 +553,33 @@ function BediflyCRM() {
         if (email && !z.string().email().safeParse(email).success) return null;
         const statusValue = statusIndex >= 0 ? row[statusIndex]?.trim() : "";
         const qualityValue = qualityIndex >= 0 ? row[qualityIndex]?.trim() : "";
+        const createdDate = createdDateIndex >= 0 ? parseLeadDate(row[createdDateIndex]?.trim() ?? "") : null;
         return {
           organization_id: activeOrganization.id, created_by: user.id, full_name: name.slice(0, 150), phone: phone.slice(0, 40) || null,
-          email: email.slice(0, 254) || null, city: cityIndex >= 0 ? row[cityIndex]?.trim().slice(0, 120) || null : null,
+          email: email.slice(0, 254) || null, whatsapp_number: whatsappIndex >= 0 ? row[whatsappIndex]?.trim().slice(0, 40) || null : null,
+          city: cityIndex >= 0 ? row[cityIndex]?.trim().slice(0, 120) || null : null,
+          state: stateIndex >= 0 ? row[stateIndex]?.trim().slice(0, 120) || null : null,
+          country: countryIndex >= 0 ? row[countryIndex]?.trim().slice(0, 120) || null : null,
           source: sourceIndex >= 0 ? row[sourceIndex]?.trim().slice(0, 120) || "Manual" : "CSV import",
+          form_name: formIndex >= 0 ? row[formIndex]?.trim().slice(0, 160) || null : null,
+          source_reference_id: referenceIndex >= 0 ? row[referenceIndex]?.trim().slice(0, 200) || null : null,
+          campaign_name: campaignIndex >= 0 ? row[campaignIndex]?.trim().slice(0, 160) || null : null,
+          ad_set_name: adSetIndex >= 0 ? row[adSetIndex]?.trim().slice(0, 160) || null : null,
+          ad_name: adIndex >= 0 ? row[adIndex]?.trim().slice(0, 160) || null : null,
+          ...(createdDate ? { lead_created_at: createdDate } : {}),
           status: statusValue && statusOptions.includes(statusValue) ? statusValue : "New Lead",
           quality: (QUALITIES.includes(qualityValue as (typeof QUALITIES)[number]) ? qualityValue : "Warm") as (typeof QUALITIES)[number],
         };
       }).filter((row): row is LeadInsert => row !== null);
       if (!candidates.length) throw new Error("No valid lead rows were found in this file.");
-      const existingPhones = new Set(allLeads.map((lead) => lead.phone).filter(Boolean));
-      const existingEmails = new Set(allLeads.map((lead) => lead.email?.toLowerCase()).filter(Boolean));
+    const workspaceLeads = allLeads.filter((lead) => lead.organization_id === activeOrganization.id);
+    const existingPhones = new Set(workspaceLeads.map((lead) => normalizeLeadPhone(lead.phone)).filter((phone) => phone.length >= 7));
+    const existingEmails = new Set(workspaceLeads.map((lead) => lead.email?.toLowerCase()).filter(Boolean));
       const deduplicated = candidates.filter((row) => {
-        if (row.phone && existingPhones.has(row.phone)) return false;
+        const normalizedPhone = normalizeLeadPhone(row.phone);
+        if (normalizedPhone.length >= 7 && existingPhones.has(normalizedPhone)) return false;
         if (row.email && existingEmails.has(row.email.toLowerCase())) return false;
-        if (row.phone) existingPhones.add(row.phone);
+        if (normalizedPhone.length >= 7) existingPhones.add(normalizedPhone);
         if (row.email) existingEmails.add(row.email.toLowerCase());
         return true;
       });
@@ -565,10 +593,12 @@ function BediflyCRM() {
     finally { setSaving(false); }
   }
 
-  function exportLeads(rows: Lead[] = visibleLeads, fileName = "bedifly-leads.csv") {
-    const header = ["Full Name", "Phone", "Email", "WhatsApp", "City", "State", "Country", "Source", "Campaign", "Ad Set", "Ad", "Status", "Quality", "Lead Score", "Lead Value", "Assigned To", "Created At"];
-    const body = rows.map((lead) => [lead.full_name, lead.phone, lead.email, lead.whatsapp_number, lead.city, lead.state, lead.country, lead.source, lead.campaign_name, lead.ad_set_name, lead.ad_name, lead.status, lead.quality, lead.lead_score, lead.lead_value, lead.assigned_to ? memberName(membersById[lead.assigned_to], lead.assigned_to) : "Unassigned", lead.created_at]);
-    downloadCsv([header, ...body], fileName);
+  async function exportLeads(rows: Lead[] = visibleLeads, fileName = "bedifly-leads", format: "csv" | "xlsx" = "csv") {
+    const header = ["Full Name", "Phone", "Email", "WhatsApp", "City", "State", "Country", "Source", "Form Name", "Source Reference ID", "Campaign", "Ad Set", "Ad", "Lead Created Date", "Status", "Quality", "Lead Score", "Lead Value", "Assigned To", "Created At"];
+    const body = rows.map((lead) => [lead.full_name, lead.phone, lead.email, lead.whatsapp_number, lead.city, lead.state, lead.country, lead.source, lead.form_name, lead.source_reference_id, lead.campaign_name, lead.ad_set_name, lead.ad_name, lead.lead_created_at, lead.status, lead.quality, lead.lead_score, lead.lead_value, lead.assigned_to ? memberName(membersById[lead.assigned_to], lead.assigned_to) : "Unassigned", lead.created_at]);
+    const baseName = fileName.replace(/\.[^.]+$/, "");
+    if (format === "xlsx") await downloadExcel([header, ...body], `${baseName}.xlsx`);
+    else downloadCsv([header, ...body], `${baseName}.csv`);
     toast.success(`${rows.length} workspace-scoped leads exported.`);
   }
 
@@ -654,10 +684,10 @@ function BediflyCRM() {
           {!activeOrganization && !isMaster && !loadError && <div className="crm-card p-8 text-center"><Building2 className="mx-auto size-8 text-muted-foreground" /><h2 className="mt-3 text-lg font-semibold">No workspace access</h2><p className="mt-1 text-sm text-muted-foreground">Ask your Bedifly administrator to send you a workspace invitation.</p></div>}
           {(page === "overview") && <OverviewPage isMaster={isMaster} organization={activeOrganization} organizations={organizations} stats={stats} leads={scopedLeads} members={members} followUps={activeFollowUps.filter((item) => !isMaster || !activeOrganizationId || item.organization_id === activeOrganizationId)} trend={chartTrend} statuses={statusBreakdown} qualities={qualityBreakdown} onOpenLead={openLead} onPage={setPage} />}
           {page === "clients" && isMaster && <ClientsPage organizations={organizations} leads={allLeads} stats={stats} onCreate={() => setShowCreateClient(true)} onEdit={(organization) => { setEditingClient(organization); setClientForm({ name: organization.name, contactPerson: organization.contact_person ?? "", email: organization.email ?? "", phone: organization.phone ?? "", businessCategory: organization.business_category ?? "", website: organization.website ?? "", address: organization.address ?? "", city: organization.city ?? "", country: organization.country ?? "" }); setShowCreateClient(true); }} onToggleStatus={saveOrganizationStatus} onOpen={(organization) => { setActiveOrganizationId(organization.id); setPage("leads"); void refresh(organization.id); }} />}
-          {(page === "leads" || page === "pipeline") && <LeadsPage page={page} isMaster={isMaster} canManageLeads={role !== "sales_exec"} leads={visibleLeads} members={members} stats={getLeadStats(visibleLeads)} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} qualityFilter={qualityFilter} setQualityFilter={setQualityFilter} sourceFilter={sourceFilter} setSourceFilter={setSourceFilter} assigneeFilter={assigneeFilter} setAssigneeFilter={setAssigneeFilter} dateFilter={dateFilter} setDateFilter={setDateFilter} view={page === "pipeline" ? "kanban" : view} setView={setView} selectedIds={selectedIds} setSelectedIds={setSelectedIds} statusOptions={statusOptions} onOpenLead={openLead} onCreate={() => { setEditingLeadId(null); setLeadForm(emptyLead); setShowCreateLead(true); }} onExport={() => exportLeads()} onImport={importCsv} onBulkUpdate={bulkUpdate} onBulkDelete={bulkDelete} onMoveLead={moveLead} bulkAssignee={bulkAssignee} setBulkAssignee={setBulkAssignee} membersById={membersById} />}
+      {(page === "leads" || page === "pipeline") && <LeadsPage page={page} isMaster={isMaster} canManageLeads={role !== "sales_exec"} leads={visibleLeads} members={members} sourceOptions={sourceOptions} stats={getLeadStats(visibleLeads)} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} qualityFilter={qualityFilter} setQualityFilter={setQualityFilter} sourceFilter={sourceFilter} setSourceFilter={setSourceFilter} assigneeFilter={assigneeFilter} setAssigneeFilter={setAssigneeFilter} dateFilter={dateFilter} setDateFilter={setDateFilter} customDateStart={customDateStart} setCustomDateStart={setCustomDateStart} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} view={page === "pipeline" ? "kanban" : view} setView={setView} selectedIds={selectedIds} setSelectedIds={setSelectedIds} statusOptions={statusOptions} onOpenLead={openLead} onCreate={() => { setEditingLeadId(null); setLeadForm(emptyLead); setShowCreateLead(true); }} onExport={() => void exportLeads()} onExportExcel={() => void exportLeads(visibleLeads, "bedifly-leads", "xlsx")} onImport={importCsv} onBulkUpdate={bulkUpdate} onBulkDelete={bulkDelete} onMoveLead={moveLead} bulkAssignee={bulkAssignee} setBulkAssignee={setBulkAssignee} membersById={membersById} />}
           {page === "team" && <TeamPage isMaster={isMaster} canManageTeam={role !== "sales_exec"} organizations={organizations} members={members} leads={allLeads} followUps={activeFollowUps} onInvite={() => setShowInvite(true)} onToggleMember={setMemberActive} />}
           {page === "follow-ups" && <FollowUpsPage followUps={activeFollowUps} leads={allLeads} membersById={membersById} onComplete={completeFollowUp} onOpenLead={(id) => { const lead = allLeads.find((row) => row.id === id); if (lead) void openLead(lead); }} />}
-          {page === "reports" && <ReportsPage leads={scopedLeads} members={members} onExport={exportLeads} />}
+          {page === "reports" && <ReportsPage leads={scopedLeads} members={members} onExport={(rows, name) => void exportLeads(rows, name)} onExportExcel={(rows, name) => void exportLeads(rows, name, "xlsx")} />}
           {page === "activity" && <ActivityPage leads={scopedLeads} stats={stats} organizations={organizations} />}
           {page === "settings" && <SettingsPage organization={activeOrganization} statuses={statusOptions} customStatus={customStatus} setCustomStatus={setCustomStatus} onAddStatus={addStatus} isMaster={isMaster} canManageSettings={role !== "sales_exec"} />}
         </div>
@@ -684,6 +714,9 @@ function BediflyCRM() {
           <Field label="State"><Input value={leadForm.state} onChange={(event) => setLeadForm({ ...leadForm, state: event.target.value })} maxLength={120} /></Field>
           <Field label="Country"><Input value={leadForm.country} onChange={(event) => setLeadForm({ ...leadForm, country: event.target.value })} maxLength={120} /></Field>
           <Field label="Lead source"><Input value={leadForm.source} onChange={(event) => setLeadForm({ ...leadForm, source: event.target.value })} maxLength={120} required /></Field>
+          <Field label="Form name"><Input value={leadForm.form_name} onChange={(event) => setLeadForm({ ...leadForm, form_name: event.target.value })} maxLength={160} /></Field>
+          <Field label="Source reference ID"><Input value={leadForm.source_reference_id} onChange={(event) => setLeadForm({ ...leadForm, source_reference_id: event.target.value })} maxLength={200} /></Field>
+          <Field label="Lead created date"><Input type="date" value={leadForm.lead_created_at} onChange={(event) => setLeadForm({ ...leadForm, lead_created_at: event.target.value })} /></Field>
           <Field label="Campaign name"><Input value={leadForm.campaign_name} onChange={(event) => setLeadForm({ ...leadForm, campaign_name: event.target.value })} maxLength={160} /></Field>
           <Field label="Ad set name"><Input value={leadForm.ad_set_name} onChange={(event) => setLeadForm({ ...leadForm, ad_set_name: event.target.value })} maxLength={160} /></Field>
           <Field label="Ad name"><Input value={leadForm.ad_name} onChange={(event) => setLeadForm({ ...leadForm, ad_name: event.target.value })} maxLength={160} /></Field>
@@ -819,25 +852,26 @@ function ClientsPage({ organizations, leads, onCreate, onEdit, onToggleStatus, o
   </div>;
 }
 
-function LeadsPage({ page, isMaster, canManageLeads, leads, members, stats, search, setSearch, statusFilter, setStatusFilter, qualityFilter, setQualityFilter, sourceFilter, setSourceFilter, assigneeFilter, setAssigneeFilter, dateFilter, setDateFilter, view, setView, selectedIds, setSelectedIds, statusOptions, onOpenLead, onCreate, onExport, onImport, onBulkUpdate, onBulkDelete, onMoveLead, bulkAssignee, setBulkAssignee, membersById }: {
-  page: PageKey; isMaster: boolean; canManageLeads: boolean; leads: Lead[]; members: Member[]; stats: ReturnType<typeof getLeadStats>; search: string; setSearch: (v: string) => void; statusFilter: string; setStatusFilter: (v: string) => void;
-  qualityFilter: string; setQualityFilter: (v: string) => void; sourceFilter: string; setSourceFilter: (v: string) => void; assigneeFilter: string; setAssigneeFilter: (v: string) => void; dateFilter: string; setDateFilter: (v: string) => void; view: "table" | "kanban"; setView: (v: "table" | "kanban") => void;
-  selectedIds: string[]; setSelectedIds: (v: string[] | ((ids: string[]) => string[])) => void; statusOptions: string[]; onOpenLead: (lead: Lead) => void; onCreate: () => void; onExport: () => void;
+function LeadsPage({ page, isMaster, canManageLeads, leads, members, sourceOptions, stats, search, setSearch, statusFilter, setStatusFilter, qualityFilter, setQualityFilter, sourceFilter, setSourceFilter, assigneeFilter, setAssigneeFilter, dateFilter, setDateFilter, customDateStart, setCustomDateStart, customDateEnd, setCustomDateEnd, view, setView, selectedIds, setSelectedIds, statusOptions, onOpenLead, onCreate, onExport, onExportExcel, onImport, onBulkUpdate, onBulkDelete, onMoveLead, bulkAssignee, setBulkAssignee, membersById }: {
+  page: PageKey; isMaster: boolean; canManageLeads: boolean; leads: Lead[]; members: Member[]; sourceOptions: string[]; stats: ReturnType<typeof getLeadStats>; search: string; setSearch: (v: string) => void; statusFilter: string; setStatusFilter: (v: string) => void;
+  qualityFilter: string; setQualityFilter: (v: string) => void; sourceFilter: string; setSourceFilter: (v: string) => void; assigneeFilter: string; setAssigneeFilter: (v: string) => void; dateFilter: string; setDateFilter: (v: string) => void; customDateStart: string; setCustomDateStart: (v: string) => void; customDateEnd: string; setCustomDateEnd: (v: string) => void; view: "table" | "kanban"; setView: (v: "table" | "kanban") => void;
+  selectedIds: string[]; setSelectedIds: (v: string[] | ((ids: string[]) => string[])) => void; statusOptions: string[]; onOpenLead: (lead: Lead) => void; onCreate: () => void; onExport: () => void; onExportExcel: () => void;
   onImport: (file?: File) => void; onBulkUpdate: (changes: Database["public"]["Tables"]["leads"]["Update"]) => void; bulkAssignee: string; setBulkAssignee: (v: string) => void; membersById: Record<string, Member>;
   onBulkDelete: () => void; onMoveLead: (lead: Lead, status: string) => void;
 }) {
   const isPipeline = page === "pipeline";
   const activeFilterCount = Number(statusFilter !== "All statuses") + Number(qualityFilter !== "All qualities") + Number(sourceFilter !== "All sources") + Number(assigneeFilter !== "All executives") + Number(dateFilter !== "Last 30 days");
   const leadTypes = isMaster ? ["New Lead", "Contacted", "Qualified", "Converted"] : ["New Lead", "Contacted", "Qualified", "Converted"];
-  return <div className="space-y-6"><PageIntro eyebrow={isMaster ? "PLATFORM LEADS" : "SALES WORKSPACE"} title={isPipeline ? "Lead pipeline" : isMaster ? "All client leads" : "Lead management"} description={isMaster ? "Review lead performance across accessible client workspaces." : "Find, assign, and follow through on every sales opportunity."} action={<div className="flex flex-wrap gap-2">{canManageLeads && <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent"><ArrowDownToLine className="size-4" /> Import CSV<input type="file" accept=".csv,text/csv" className="sr-only" onChange={(event) => { void onImport(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>}<Button variant="outline" size="sm" onClick={onExport}><Download className="size-4" /> Export CSV</Button>{!isMaster && canManageLeads && <Button size="sm" onClick={onCreate}><Plus className="size-4" /> Add lead</Button>}</div>} />
+  return <div className="space-y-6"><PageIntro eyebrow={isMaster ? "PLATFORM LEADS" : "SALES WORKSPACE"} title={isPipeline ? "Lead pipeline" : isMaster ? "All client leads" : "Lead management"} description={isMaster ? "Review lead performance across accessible client workspaces." : "Find, assign, and follow through on every sales opportunity."} action={<div className="flex flex-wrap gap-2">{canManageLeads && <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent"><ArrowDownToLine className="size-4" /> Import spreadsheet<input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={(event) => { void onImport(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>}<Button variant="outline" size="sm" onClick={onExport}><Download className="size-4" /> Export CSV</Button><Button variant="outline" size="sm" onClick={onExportExcel}><Download className="size-4" /> Export Excel</Button>{!isMaster && canManageLeads && <Button size="sm" onClick={onCreate}><Plus className="size-4" /> Add lead</Button>}</div>} />
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{leadTypes.map((status) => <MetricTile key={status} label={status} value={leads.filter((lead) => lead.status === status).length} hint={status === "New Lead" ? "Awaiting first contact" : status === "Converted" ? "Won opportunities" : "Current workspace"} icon={status === "Converted" ? Check : status === "Qualified" ? Target : UsersRound} tone={status === "Converted" ? "green" : "blue"} />)}</div>
     <section className="crm-card overflow-hidden"><div className="flex flex-wrap items-center gap-2 border-b border-border p-4"><div className="relative min-w-[200px] flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, email…" className="pl-9" /></div>
-      <select aria-label="Lead date filter" className="h-9 rounded-md border border-input bg-background px-2.5 text-xs" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)}>{["Today", "Yesterday", "Last 7 days", "Last 30 days", "This month", "All time"].map((date) => <option key={date}>{date}</option>)}</select>
+      <select aria-label="Lead date filter" className="h-9 rounded-md border border-input bg-background px-2.5 text-xs" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)}>{["Today", "Yesterday", "Last 7 days", "Last 30 days", "This month", "All time", "Custom range"].map((date) => <option key={date}>{date}</option>)}</select>
+      {dateFilter === "Custom range" && <div className="flex items-center gap-2"><Input aria-label="Lead start date" type="date" value={customDateStart} onChange={(event) => setCustomDateStart(event.target.value)} className="h-9 w-[140px] text-xs" /><Input aria-label="Lead end date" type="date" min={customDateStart || undefined} value={customDateEnd} onChange={(event) => setCustomDateEnd(event.target.value)} className="h-9 w-[140px] text-xs" /></div>}
       <select aria-label="Filter lead status" className="h-9 max-w-[160px] rounded-md border border-input bg-background px-2.5 text-xs" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>
       <select aria-label="Filter lead quality" className="h-9 rounded-md border border-input bg-background px-2.5 text-xs" value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value)}><option>All qualities</option>{QUALITIES.map((quality) => <option key={quality}>{quality}</option>)}</select>
-      <select aria-label="Filter lead source" className="h-9 max-w-[145px] rounded-md border border-input bg-background px-2.5 text-xs" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option>All sources</option>{Array.from(new Set(leads.map((lead) => lead.source).filter(Boolean))).sort().map((source) => <option key={source}>{source}</option>)}</select>
+      <select aria-label="Filter lead source" className="h-9 max-w-[145px] rounded-md border border-input bg-background px-2.5 text-xs" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option>All sources</option>{sourceOptions.map((source) => <option key={source}>{source}</option>)}</select>
       <select aria-label="Filter sales executive" className="h-9 max-w-[170px] rounded-md border border-input bg-background px-2.5 text-xs" value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><option>All executives</option><option value="Unassigned">Unassigned</option>{members.filter((member) => member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select>
-      <Button variant="outline" size="sm" onClick={() => { setStatusFilter("All statuses"); setQualityFilter("All qualities"); setSourceFilter("All sources"); setAssigneeFilter("All executives"); setDateFilter("Last 30 days"); }}><ListFilter className="size-4" /> {activeFilterCount ? `${activeFilterCount} filters` : "Filters"}</Button>
+      <Button variant="outline" size="sm" onClick={() => { setStatusFilter("All statuses"); setQualityFilter("All qualities"); setSourceFilter("All sources"); setAssigneeFilter("All executives"); setDateFilter("Last 30 days"); setCustomDateStart(""); setCustomDateEnd(""); }}><ListFilter className="size-4" /> {activeFilterCount ? `${activeFilterCount} filters` : "Filters"}</Button>
       <div className="ml-auto flex rounded-md border border-border bg-muted/50 p-0.5"><Button size="sm" variant={view === "table" ? "secondary" : "ghost"} className="h-7 px-2.5 text-[11px]" onClick={() => setView("table")}><FileSpreadsheet className="size-3.5" /> Table</Button><Button size="sm" variant={view === "kanban" ? "secondary" : "ghost"} className="h-7 px-2.5 text-[11px]" onClick={() => setView("kanban")}><Workflow className="size-3.5" /> Board</Button></div>
     </div>
     {selectedIds.length > 0 && <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/[0.035] px-4 py-3"><span className="mr-2 text-xs font-medium text-foreground">{selectedIds.length} selected</span>{canManageLeads && <><select aria-label="Bulk update status" className="h-8 rounded-md border border-input bg-background px-2 text-xs" defaultValue="" onChange={(event) => { if (event.target.value) onBulkUpdate({ status: event.target.value }); }}><option value="">Change status…</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select><select aria-label="Bulk assign lead" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={bulkAssignee} onChange={(event) => { setBulkAssignee(event.target.value); if (event.target.value) onBulkUpdate({ assigned_to: event.target.value }); }}><option value="">Assign to…</option>{members.filter((member) => member.is_active && member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select><Button variant="outline" size="sm" className="text-destructive" onClick={onBulkDelete}><X className="size-4" /> Delete selected</Button></>}<Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>Clear</Button></div>}
@@ -872,7 +906,7 @@ function LeadDetail({ lead, members, statuses, notes, activities, onUpdate, onDe
   return <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.75fr)]">
     <div className="space-y-5"><div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/25 p-4 sm:grid-cols-3">{[
       ["Phone", lead.phone || "Not added"], ["Email", lead.email || "Not added"], ["WhatsApp", lead.whatsapp_number || "Not added"],
-      ["Location", [lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "Not added"], ["Source", lead.source], ["Score", `${lead.lead_score} / 100`],
+      ["Location", [lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "Not added"], ["Source", lead.source], ["Form", lead.form_name || "Not added"], ["Source reference", lead.source_reference_id || "Not added"], ["Lead created", formatDate(lead.lead_created_at)], ["Score", `${lead.lead_score} / 100`],
       ["Campaign", lead.campaign_name || "Not added"], ["Ad set", lead.ad_set_name || "Not added"], ["Ad", lead.ad_name || "Not added"],
     ].map(([label, value]) => <div key={label}><p className="text-[10px] font-medium uppercase text-muted-foreground">{label}</p><p className="mt-1 break-words text-xs font-medium text-foreground">{value}</p></div>)}</div>
       <div className={`grid gap-3 ${canManageLeads ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}><Field label="Lead status"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.status} onChange={(event) => onUpdate(lead, { status: event.target.value }, "Lead status updated.")}>{statuses.map((status) => <option key={status}>{status}</option>)}</select></Field><Field label="Lead quality"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.quality} onChange={(event) => onUpdate(lead, { quality: event.target.value }, "Lead quality updated.")}>{QUALITIES.map((quality) => <option key={quality}>{quality}</option>)}</select></Field>{canManageLeads && <Field label="Assign executive"><select className="h-9 rounded-md border border-input bg-background px-3 text-xs" value={lead.assigned_to ?? ""} onChange={(event) => onUpdate(lead, { assigned_to: event.target.value || null }, "Lead assignment updated.")}><option value="">Unassigned</option>{members.filter((member) => member.is_active && member.user_roles?.some((item) => item.role === "sales_exec")).map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id}</option>)}</select></Field>}</div>
@@ -907,7 +941,7 @@ function FollowUpsPage({ followUps, leads, membersById, onComplete, onOpenLead }
   </div>;
 }
 
-function ReportsPage({ leads, members, onExport }: { leads: Lead[]; members: Member[]; onExport: (rows?: Lead[], fileName?: string) => void }) {
+function ReportsPage({ leads, members, onExport, onExportExcel }: { leads: Lead[]; members: Member[]; onExport: (rows?: Lead[], fileName?: string) => void; onExportExcel: (rows?: Lead[], fileName?: string) => void }) {
   const stats = getLeadStats(leads);
   const reports = [
     { title: "Overall lead performance", description: "Pipeline volume, qualification, and conversion summary.", rows: leads, name: "lead-performance.csv", icon: BarChart3 },
@@ -921,7 +955,7 @@ function ReportsPage({ leads, members, onExport }: { leads: Lead[]; members: Mem
   ];
   return <div className="space-y-6"><PageIntro eyebrow="WORKSPACE REPORTING" title="Reports & exports" description="Download CRM records visible to your current role and workspace." />
     <div className="grid gap-4 sm:grid-cols-3"><MetricTile label="Records in scope" value={leads.length} hint="Current accessible leads" icon={UsersRound} tone="blue" /><MetricTile label="Qualified" value={stats.qualified} hint="Current report window" icon={Target} tone="green" /><MetricTile label="Converted" value={stats.converted} hint="Current report window" icon={Check} tone="green" /></div>
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{reports.map((report) => <article key={report.title} className="crm-card p-5"><span className="grid size-9 place-items-center rounded-md bg-secondary text-secondary-foreground"><report.icon className="size-[18px]" /></span><h3 className="mt-4 text-sm font-semibold text-foreground">{report.title}</h3><p className="mt-1 min-h-9 text-xs leading-relaxed text-muted-foreground">{report.description}</p><div className="mt-4 flex items-center justify-between"><span className="text-[10px] text-muted-foreground">{report.rows.length} records · CSV</span><Button size="sm" variant="outline" onClick={() => onExport(report.rows, report.name)}><Download className="size-4" /> Export</Button></div></article>)}</div>
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{reports.map((report) => <article key={report.title} className="crm-card p-5"><span className="grid size-9 place-items-center rounded-md bg-secondary text-secondary-foreground"><report.icon className="size-[18px]" /></span><h3 className="mt-4 text-sm font-semibold text-foreground">{report.title}</h3><p className="mt-1 min-h-9 text-xs leading-relaxed text-muted-foreground">{report.description}</p><div className="mt-4 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] text-muted-foreground">{report.rows.length} records · CSV / Excel</span><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => onExport(report.rows, report.name)}><Download className="size-4" /> CSV</Button><Button size="sm" variant="outline" onClick={() => onExportExcel(report.rows, report.name)}><Download className="size-4" /> Excel</Button></div></div></article>)}</div>
   </div>;
 }
 
@@ -1022,30 +1056,11 @@ function getLeadTrend(leads: Lead[]) {
   return days;
 }
 
-function getDateCutoff(filter: string): Date | null {
-  const now = new Date();
-  if (filter === "All time") return null;
-  if (filter === "Today") return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (filter === "Yesterday") { const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1); return start; }
-  if (filter === "Last 7 days") return new Date(now.getTime() - 7 * 86400000);
-  if (filter === "This month") return new Date(now.getFullYear(), now.getMonth(), 1);
-  return new Date(now.getTime() - 30 * 86400000);
-}
-
-function normalizeHeader(header: string) { return header.replace(/^\uFEFF/, "").trim().toLowerCase().replaceAll("_", " ").replaceAll(/\s+/g, " "); }
-
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = []; let row: string[] = []; let field = ""; let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (char === '"' && quoted && text[index + 1] === '"') { field += '"'; index += 1; }
-    else if (char === '"') quoted = !quoted;
-    else if (char === "," && !quoted) { row.push(field); field = ""; }
-    else if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && text[index + 1] === "\n") index += 1; row.push(field); rows.push(row); row = []; field = ""; }
-    else field += char ?? "";
-  }
-  if (field || row.length) { row.push(field); rows.push(row); }
-  return rows.filter((values) => values.some((value) => value.trim()));
+async function downloadExcel(rows: unknown[][], fileName: string) {
+  const buffer = await createXlsx(rows);
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  link.href = url; link.download = fileName; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
 }
 
 function downloadCsv(rows: unknown[][], fileName: string) {
