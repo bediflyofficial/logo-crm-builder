@@ -19,7 +19,7 @@ export async function refreshMetaAssets(organizationId: string, connectionId: st
   const { token } = await loadMetaConnection(organizationId, connectionId);
   let count = 0;
   const warnings: string[] = [];
-  const save = async (raw: Record<string, unknown>, type: "page" | "ad_account" | "instagram" | "form" | "dataset", parent?: string) => {
+  const save = async (raw: Record<string, unknown>, type: "page" | "ad_account" | "instagram" | "form" | "dataset" | "business", parent?: string) => {
     const asset = assetSchema.parse(raw);
     // Deliberately project safe metadata. Never store raw /me/accounts responses containing tokens.
     const metadata = Object.fromEntries(["currency", "account_status", "status", "created_time", "leads_count", "username"].filter((key) => raw[key] !== undefined).map((key) => [key, raw[key]]));
