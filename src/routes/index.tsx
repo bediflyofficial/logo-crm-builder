@@ -808,9 +808,8 @@ function AuthScreen({ mode, setMode, email, setEmail, password, setPassword, bus
       <div className="flex items-center gap-3"><img src={bediflyLogo.url} alt="Bedifly" className="h-12 max-w-[160px] object-contain object-left" /><span className="border-l border-border pl-3 text-xs font-semibold uppercase text-muted-foreground">CRM</span></div>
       <div className="flex flex-1 items-center py-10"><div className="mx-auto w-full max-w-[390px]">
         <div className="mb-8"><p className="mb-3 flex items-center gap-2 text-xs font-medium text-primary"><span className="size-1.5 rounded-full bg-primary" /> Secure workspace access</p><h1 className="text-[30px] font-semibold leading-tight text-foreground">{mode === "signup" ? "Create your account" : mode === "forgot" ? "Reset your password" : "Welcome back"}</h1><p className="mt-2 text-sm text-muted-foreground">{mode === "signup" ? "Create a Bedifly CRM login to continue." : mode === "forgot" ? "Enter your email and we’ll send you a secure reset link." : "Sign in to your Bedifly CRM workspace."}</p></div>
-        {mode !== "forgot" && <div className="mb-5 grid gap-2 sm:grid-cols-2">
+        {mode !== "forgot" && <div className="mb-5 grid gap-2">
           <Button variant="outline" className="h-10 w-full border-border bg-card text-foreground hover:bg-muted" disabled={busy} onClick={() => onProvider("google")}><GoogleMark /> Continue with Google</Button>
-          <Button variant="outline" className="h-10 w-full border-border bg-card text-foreground hover:bg-muted" disabled={busy} onClick={() => onProvider("lovable")}><Sparkles className="size-4" /> Continue with Lovable</Button>
         </div>}
         {mode !== "forgot" && <div className="mb-5 flex items-center gap-3 text-[11px] text-muted-foreground"><span className="h-px flex-1 bg-border" /> or continue with email <span className="h-px flex-1 bg-border" /></div>}
         <form onSubmit={onSubmit} className="space-y-4">
