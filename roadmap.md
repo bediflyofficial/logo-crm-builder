@@ -27,7 +27,7 @@
 - [ ] Confirm Meta leadgen webhook is live at the published address (needs META_WEBHOOK_VERIFY_TOKEN)
 
 ## Oracle-hosted Meta backend migration
-- [ ] Move all 17 browser-facing Meta actions to authenticated Lovable Cloud endpoints with tenant authorization.
-- [ ] Return Facebook OAuth callbacks securely to the Oracle or Lovable window that started them.
-- [ ] Add automated authorization and cross-workspace isolation tests.
-- [ ] Verify the secured endpoints, existing admin actions, tests, and production build.
+- [x] Move all 17 browser-facing Meta actions to authenticated Lovable Cloud endpoints with tenant authorization.
+- [x] Return Facebook OAuth callbacks securely to the Oracle or Lovable window that started them.
+- [x] Add automated authorization and cross-workspace isolation tests.
+- [x] Verify the secured endpoints, existing admin actions, tests, and production build.

@@ -22,9 +22,10 @@ export const Route = createFileRoute("/api/public/meta/manage/$action")({
         const headers = corsHeaders(origin);
         if (origin && !isAllowedCrmOrigin(origin)) return Response.json({ error: "Origin not allowed." }, { status: 403, headers });
         if (!(META_ACTIONS as readonly string[]).includes(params.action)) return Response.json({ error: "Unknown Meta action." }, { status: 404, headers });
-        const [{ AdminError, authenticateCaller }, { runMetaAction }] = await Promise.all([
+        const [{ AdminError, authenticateCaller }, { runMetaAction }, { MetaApiError }] = await Promise.all([
           import("@/lib/crm-admin.server"),
           import("@/lib/meta-admin.server"),
+          import("@/lib/meta-api.server"),
         ]);
         try {
           const caller = await authenticateCaller(request);
@@ -33,6 +34,7 @@ export const Route = createFileRoute("/api/public/meta/manage/$action")({
           return Response.json(result, { headers });
         } catch (error) {
           if (error instanceof AdminError || error instanceof MetaApiAuthorizationError) return Response.json({ error: error.message }, { status: error.status, headers });
+          if (error instanceof MetaApiError) return Response.json({ error: error.message }, { status: error.status, headers });
           if (error instanceof z.ZodError) return Response.json({ error: error.issues[0]?.message ?? "Invalid input." }, { status: 400, headers });
           console.error("[meta api]", error);
           return Response.json({ error: "The Meta integration request could not be completed." }, { status: 500, headers });

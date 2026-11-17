@@ -167,13 +167,26 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       const data = z.object({ organizationId: z.string().uuid(), connectionId: z.string().uuid() }).parse(body);
       await authorize(caller, action, data.organizationId);
       const { refreshMetaAssets } = await import("@/lib/meta-assets.server");
-      return refreshMetaAssets(data.organizationId, data.connectionId);
+      try {
+        return await refreshMetaAssets(data.organizationId, data.connectionId);
+      } catch (error) {
+        if (error instanceof AdminError) throw error;
+        const { MetaApiError } = await import("@/lib/meta-api.server");
+        if (error instanceof MetaApiError) throw error;
+        throw new AdminError(safeError(error));
+      }
     }
     case "select-asset": {
       const data = z.object({ organizationId: z.string().uuid(), assetId: z.string().uuid(), selected: z.boolean() }).parse(body);
       await authorize(caller, action, data.organizationId);
       const { selectMetaAsset } = await import("@/lib/meta-assets.server");
-      return selectMetaAsset(data.organizationId, data.assetId, data.selected);
+      try {
+        return await selectMetaAsset(data.organizationId, data.assetId, data.selected);
+      } catch (error) {
+        const { MetaApiError } = await import("@/lib/meta-api.server");
+        if (error instanceof MetaApiError) throw error;
+        throw new AdminError(safeError(error));
+      }
     }
     case "disconnect-connection": {
       const data = z.object({ organizationId: z.string().uuid(), connectionId: z.string().uuid() }).parse(body);
