@@ -39,5 +39,5 @@ use the editor.
 - Complete custom Meta OAuth in the authenticated opener using a single-use state bound to user and organization; callbacks never require or receive the app session.
 - Store Page credentials separately from browser-readable assets, encrypted with authenticated encryption; safe asset metadata uses an explicit allowlist.
 - Claim Meta lead jobs with database leases and save leads, round-robin assignment, raw responses and notifications in one database transaction to prevent duplicate or partial imports.
-- Keep per-workspace Conversions API credentials in a table with no browser grants, reached only through admin-checked server functions; production enabling requires a Meta-accepted test event.
+- Run every browser-facing Meta integration action only in `/api/public/meta/manage/$action` on Lovable hosting, verifying the bearer user and platform/org-admin role per request with the CRM CORS origin allowlist; Conversions API credentials stay in a no-browser-grant table and production enabling requires a Meta-accepted test event.
 - Privileged CRM admin actions (workspace creation, invitations, role assignment) run only in `/api/public/admin/$action` on Lovable hosting, verifying the bearer user and platform/org-admin role per request with a CORS origin allowlist; externally hosted frontends (crm.bedifly.com) never hold the service-role key.

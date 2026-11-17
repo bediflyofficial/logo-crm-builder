@@ -15,6 +15,7 @@ import { Route as ApiPublicAdminActionRouteImport } from './routes/api/public/ad
 import { Route as ApiPublicMetaCallbackRouteImport } from './routes/api/public/meta/callback'
 import { Route as ApiPublicMetaProcessRouteImport } from './routes/api/public/meta/process'
 import { Route as ApiPublicMetaWebhookRouteImport } from './routes/api/public/meta/webhook'
+import { Route as ApiPublicMetaManageActionRouteImport } from './routes/api/public/meta/manage/$action'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,12 @@ const ApiPublicMetaWebhookRoute = ApiPublicMetaWebhookRouteImport.update({
   path: '/api/public/meta/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicMetaManageActionRoute =
+  ApiPublicMetaManageActionRouteImport.update({
+    id: '/api/public/meta/manage/$action',
+    path: '/api/public/meta/manage/$action',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByFullPath {
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
+  '/api/public/meta/manage/$action': typeof ApiPublicMetaManageActionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +70,7 @@ export interface FileRoutesByTo {
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
+  '/api/public/meta/manage/$action': typeof ApiPublicMetaManageActionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +80,7 @@ export interface FileRoutesById {
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
+  '/api/public/meta/manage/$action': typeof ApiPublicMetaManageActionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +91,7 @@ export interface FileRouteTypes {
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
+    | '/api/public/meta/manage/$action'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +100,7 @@ export interface FileRouteTypes {
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
+    | '/api/public/meta/manage/$action'
   id:
     | '__root__'
     | '/'
@@ -97,6 +109,7 @@ export interface FileRouteTypes {
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
+    | '/api/public/meta/manage/$action'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +119,7 @@ export interface RootRouteChildren {
   ApiPublicMetaCallbackRoute: typeof ApiPublicMetaCallbackRoute
   ApiPublicMetaProcessRoute: typeof ApiPublicMetaProcessRoute
   ApiPublicMetaWebhookRoute: typeof ApiPublicMetaWebhookRoute
+  ApiPublicMetaManageActionRoute: typeof ApiPublicMetaManageActionRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -152,6 +166,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicMetaWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/meta/manage/$action': {
+      id: '/api/public/meta/manage/$action'
+      path: '/api/public/meta/manage/$action'
+      fullPath: '/api/public/meta/manage/$action'
+      preLoaderRoute: typeof ApiPublicMetaManageActionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -162,6 +183,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicMetaCallbackRoute: ApiPublicMetaCallbackRoute,
   ApiPublicMetaProcessRoute: ApiPublicMetaProcessRoute,
   ApiPublicMetaWebhookRoute: ApiPublicMetaWebhookRoute,
+  ApiPublicMetaManageActionRoute: ApiPublicMetaManageActionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

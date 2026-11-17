@@ -25,3 +25,9 @@
 - [ ] Implement consent-checked event transmission; requires verified dataset eligibility, customer consent workflow and Meta configuration.
 - [ ] Verify Meta receipt, event deduplication and withdrawal behavior with test events.
 - [ ] Confirm Meta leadgen webhook is live at the published address (needs META_WEBHOOK_VERIFY_TOKEN)
+
+## Oracle-hosted Meta backend migration
+- [ ] Move all 17 browser-facing Meta actions to authenticated Lovable Cloud endpoints with tenant authorization.
+- [ ] Return Facebook OAuth callbacks securely to the Oracle or Lovable window that started them.
+- [ ] Add automated authorization and cross-workspace isolation tests.
+- [ ] Verify the secured endpoints, existing admin actions, tests, and production build.

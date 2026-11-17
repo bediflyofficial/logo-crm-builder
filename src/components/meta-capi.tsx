@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, Facebook, FlaskConical, LoaderCircle, PlugZap, Save, Send, Settings2, Unplug, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { disconnectCapi, getCapiConfig, getMetaAppStatus, listClientIntegrationStatuses, saveCapiConfig, sendCapiTestEvent, setCapiEnabled, testCapiConnection, testMetaApp } from "@/lib/meta-capi.functions";
+import { callMetaApi } from "@/lib/meta-api-client";
+import type { MetaAppStatus, MetaCapiConfigView, MetaClientIntegrationStatus } from "@/lib/meta-api-rules";
 import type { CapiStatus } from "@/lib/meta-rules";
 
 const LABELS: Record<CapiStatus, string> = { not_connected: "Not Connected", configuration_required: "Configuration Required", connected: "Connected", test_successful: "Test Successful", production_active: "Production Active", connection_error: "Connection Error" };
@@ -18,17 +18,15 @@ export function StatusBadge({ status }: { status: CapiStatus }) {
 function errorText(error: unknown) { return error instanceof Error ? error.message : "Action failed."; }
 
 export function MetaAppPanel() {
-  const fetchStatus = useServerFn(getMetaAppStatus);
-  const runTest = useServerFn(testMetaApp);
   const [open, setOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-  const query = useQuery({ queryKey: ["meta-app-status"], queryFn: () => fetchStatus(), enabled: open, retry: false, staleTime: 0, gcTime: 0 });
+  const query = useQuery({ queryKey: ["meta-app-status"], queryFn: () => callMetaApi<MetaAppStatus>("app-status"), enabled: open, retry: false, staleTime: 0, gcTime: 0 });
   const missing = query.data?.settings.filter((s) => !s.configured) ?? [];
   const status: CapiStatus = missing.length ? "configuration_required" : result?.ok === false ? "connection_error" : result?.ok ? "connected" : "not_connected";
   async function test() {
     setTesting(true);
-    try { const r = await runTest(); setResult({ ok: true, text: `Meta accepted the app credentials (${r.appName}).` }); toast.success("Meta App credentials verified."); }
+    try { const r = await callMetaApi<{ appName: string }>("test-app"); setResult({ ok: true, text: `Meta accepted the app credentials (${r.appName}).` }); toast.success("Meta App credentials verified."); }
     catch (error) { setResult({ ok: false, text: errorText(error) }); toast.error(errorText(error)); }
     finally { setTesting(false); }
   }
@@ -49,8 +47,7 @@ export function MetaAppPanel() {
 }
 
 export function ClientStatusTable({ onOpenWorkspace }: { onOpenWorkspace?: ((id: string) => void) | undefined }) {
-  const list = useServerFn(listClientIntegrationStatuses);
-  const query = useQuery({ queryKey: ["meta-client-statuses"], queryFn: () => list(), retry: false });
+  const query = useQuery({ queryKey: ["meta-client-statuses"], queryFn: () => callMetaApi<MetaClientIntegrationStatus[]>("client-statuses"), retry: false });
   if (query.isPending) return <p className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading client integrations</p>;
   if (query.error) return <p className="text-sm text-destructive">{query.error.message}</p>;
   if (!query.data.length) return <p className="py-6 text-sm text-muted-foreground">No client workspaces yet.</p>;
@@ -58,15 +55,9 @@ export function ClientStatusTable({ onOpenWorkspace }: { onOpenWorkspace?: ((id:
 }
 
 export function CapiConfigForm({ organizationId }: { organizationId: string }) {
-  const fetchConfig = useServerFn(getCapiConfig);
-  const save = useServerFn(saveCapiConfig);
-  const test = useServerFn(testCapiConnection);
-  const sendTest = useServerFn(sendCapiTestEvent);
-  const toggle = useServerFn(setCapiEnabled);
-  const remove = useServerFn(disconnectCapi);
   const cache = useQueryClient();
   const key = ["meta-capi", organizationId];
-  const query = useQuery({ queryKey: key, queryFn: () => fetchConfig({ data: { organizationId } }), retry: false });
+  const query = useQuery({ queryKey: key, queryFn: () => callMetaApi<MetaCapiConfigView>("capi-config", { organizationId }), retry: false });
   const [editing, setEditing] = useState(false);
   const [datasetId, setDatasetId] = useState("");
   const [token, setToken] = useState("");
@@ -87,20 +78,20 @@ export function CapiConfigForm({ organizationId }: { organizationId: string }) {
   return <section className="rounded-md border border-border bg-card p-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">Configure Dataset / Pixel</h3><p className="mt-1 text-sm text-muted-foreground">Credentials are encrypted on the backend and never shown again.</p></div><StatusBadge status={c.status} /></div>
     {c.lastError && <p className="mt-3 break-words text-sm text-destructive">Last error: {c.lastError}</p>}
-    {showForm ? <form className="mt-5 grid max-w-xl gap-4" onSubmit={(event) => { event.preventDefault(); void run("save", () => save({ data: { organizationId, datasetId, accessToken: token, testEventCode: testCode } }), () => "Configuration saved. Test the connection next.").then((ok) => { if (ok) { setEditing(false); setToken(""); } }); }}>
+    {showForm ? <form className="mt-5 grid max-w-xl gap-4" onSubmit={(event) => { event.preventDefault(); void run("save", () => callMetaApi("save-capi", { organizationId, datasetId, accessToken: token, testEventCode: testCode }), () => "Configuration saved. Test the connection next.").then((ok) => { if (ok) { setEditing(false); setToken(""); } }); }}>
       <div className="grid gap-2"><Label htmlFor="capi-dataset">Dataset ID / Pixel ID</Label><Input id="capi-dataset" inputMode="numeric" required value={datasetId} onChange={(e) => setDatasetId(e.target.value)} placeholder="e.g. 123456789012345" /></div>
       <div className="grid gap-2"><Label htmlFor="capi-token">CAPI Access Token</Label><Input id="capi-token" type="password" autoComplete="new-password" required={!c.hasToken} value={token} onChange={(e) => setToken(e.target.value)} placeholder={c.hasToken ? "Saved — leave blank to keep current token" : "Paste token from Events Manager"} /></div>
       <div className="grid gap-2"><Label htmlFor="capi-test">Test Event Code</Label><Input id="capi-test" value={testCode} onChange={(e) => setTestCode(e.target.value)} placeholder="e.g. TEST12345" /></div>
       <div className="flex gap-2"><Button type="submit" disabled={Boolean(busy)}>{spin("save") ?? <Save className="size-4" />}Save Configuration</Button>{editing && <Button type="button" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>}</div>
     </form> : <>
       <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-3"><div><dt className="text-xs text-muted-foreground">Dataset ID / Pixel ID</dt><dd>{c.datasetId || "—"}</dd></div><div><dt className="text-xs text-muted-foreground">CAPI Access Token</dt><dd>{c.hasToken ? "Saved securely" : "Missing"}</dd></div><div><dt className="text-xs text-muted-foreground">Test Event Code</dt><dd>{c.testEventCode || "—"}</dd></div><div><dt className="text-xs text-muted-foreground">Last connection test</dt><dd>{c.lastTestedAt ? new Date(c.lastTestedAt).toLocaleString() : "Never"}</dd></div><div><dt className="text-xs text-muted-foreground">Last test event</dt><dd>{c.lastTestEventAt ? new Date(c.lastTestEventAt).toLocaleString() : "Never"}</dd></div></dl>
-      <label className="mt-5 flex items-center gap-3 text-sm"><input type="checkbox" checked={c.enabled} disabled={Boolean(busy)} onChange={(e) => void run("toggle", () => toggle({ data: { organizationId, enabled: e.target.checked } }), () => e.target.checked ? "Conversions API enabled." : "Conversions API disabled.")} />Enable Conversions API {busy === "toggle" && <LoaderCircle className="size-4 animate-spin" />}</label>
+      <label className="mt-5 flex items-center gap-3 text-sm"><input type="checkbox" checked={c.enabled} disabled={Boolean(busy)} onChange={(e) => void run("toggle", () => callMetaApi("set-capi-enabled", { organizationId, enabled: e.target.checked }), () => e.target.checked ? "Conversions API enabled." : "Conversions API disabled.")} />Enable Conversions API {busy === "toggle" && <LoaderCircle className="size-4 animate-spin" />}</label>
       <p className="mt-1 text-xs text-muted-foreground">Requires a successful test event. Each lead's conversion is still sent only when that customer's advertising consent is recorded.</p>
       <div className="mt-5 flex flex-wrap gap-2">
         <Button variant="outline" disabled={Boolean(busy)} onClick={startEdit}><Settings2 className="size-4" />Edit</Button>
-        <Button variant="outline" disabled={Boolean(busy) || !c.hasToken} onClick={() => void run("test", () => test({ data: { organizationId } }), (r: { datasetName: string }) => `Connected to ${r.datasetName}.`)}>{spin("test") ?? <FlaskConical className="size-4" />}Test Connection</Button>
-        <Button variant="outline" disabled={Boolean(busy) || !c.hasToken || !c.testEventCode} title={c.testEventCode ? "Send a test event to Meta" : "Add a Test Event Code first"} onClick={() => void run("event", () => sendTest({ data: { organizationId } }), () => "Meta received the test event. Check Events Manager → Test events.")}>{spin("event") ?? <Send className="size-4" />}Send Test Event</Button>
-        <Button variant="outline" disabled={Boolean(busy)} onClick={() => { if (window.confirm("Remove this Dataset configuration and its saved token?")) void run("remove", () => remove({ data: { organizationId } }), () => "Conversions API disconnected."); }}>{spin("remove") ?? <Unplug className="size-4" />}Disconnect</Button>
+        <Button variant="outline" disabled={Boolean(busy) || !c.hasToken} onClick={() => void run("test", () => callMetaApi<{ datasetName: string }>("test-capi", { organizationId }), (r: { datasetName: string }) => `Connected to ${r.datasetName}.`)}>{spin("test") ?? <FlaskConical className="size-4" />}Test Connection</Button>
+        <Button variant="outline" disabled={Boolean(busy) || !c.hasToken || !c.testEventCode} title={c.testEventCode ? "Send a test event to Meta" : "Add a Test Event Code first"} onClick={() => void run("event", () => callMetaApi("send-capi-test", { organizationId }), () => "Meta received the test event. Check Events Manager → Test events.")}>{spin("event") ?? <Send className="size-4" />}Send Test Event</Button>
+        <Button variant="outline" disabled={Boolean(busy)} onClick={() => { if (window.confirm("Remove this Dataset configuration and its saved token?")) void run("remove", () => callMetaApi("disconnect-capi", { organizationId }), () => "Conversions API disconnected."); }}>{spin("remove") ?? <Unplug className="size-4" />}Disconnect</Button>
       </div>
       {c.status === "production_active" && <p className="mt-4 flex items-center gap-2 text-sm text-primary"><CheckCircle2 className="size-4" />Production active</p>}
     </>}

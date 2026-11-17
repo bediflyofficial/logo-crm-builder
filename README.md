@@ -49,7 +49,7 @@ oj typecheck -b --noEmit
 
 The CRM access and spreadsheet utility tests pass. Full multi-client acceptance checks require the confirmed platform administrator and invited client accounts; those accounts were unavailable for this preview verification.
 
-The app is built with TanStack Start, React, TypeScript, Tailwind CSS, and Recharts. Backend access uses Lovable Cloud, generated authenticated browser access, database row policies, and authenticated server functions for invitations.
+The app is built with TanStack Start, React, TypeScript, Tailwind CSS, and Recharts. Backend access uses Lovable Cloud, generated authenticated browser access, database row policies, and bearer-authenticated Lovable API endpoints for privileged workspace administration and every browser-facing Meta integration action. Oracle hosting needs only `VITE_CRM_ADMIN_API_URL` pointing to the published Lovable app; it never needs the service-role credential.
 
 ## Phase 2 and 3 foundations
 

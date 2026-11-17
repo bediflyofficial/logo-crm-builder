@@ -845,6 +845,7 @@ export type Database = {
           created_at: string
           expires_at: string
           id: string
+          opener_origin: string | null
           organization_id: string
           redirect_uri: string
           state_hash: string
@@ -855,6 +856,7 @@ export type Database = {
           created_at?: string
           expires_at: string
           id?: string
+          opener_origin?: string | null
           organization_id: string
           redirect_uri: string
           state_hash: string
@@ -865,6 +867,7 @@ export type Database = {
           created_at?: string
           expires_at?: string
           id?: string
+          opener_origin?: string | null
           organization_id?: string
           redirect_uri?: string
           state_hash?: string
