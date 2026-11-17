@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as ApiPublicAdminActionRouteImport } from './routes/api/public/admin/$action'
 import { Route as ApiPublicMetaCallbackRouteImport } from './routes/api/public/meta/callback'
 import { Route as ApiPublicMetaProcessRouteImport } from './routes/api/public/meta/process'
 import { Route as ApiPublicMetaWebhookRouteImport } from './routes/api/public/meta/webhook'
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicAdminActionRoute = ApiPublicAdminActionRouteImport.update({
+  id: '/api/public/admin/$action',
+  path: '/api/public/admin/$action',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicMetaCallbackRoute = ApiPublicMetaCallbackRouteImport.update({
@@ -44,6 +50,7 @@ const ApiPublicMetaWebhookRoute = ApiPublicMetaWebhookRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/api/public/admin/$action': typeof ApiPublicAdminActionRoute
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/api/public/admin/$action': typeof ApiPublicAdminActionRoute
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
@@ -59,6 +67,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/api/public/admin/$action': typeof ApiPublicAdminActionRoute
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
@@ -68,6 +77,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/reset-password'
+    | '/api/public/admin/$action'
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
@@ -75,6 +85,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/reset-password'
+    | '/api/public/admin/$action'
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
@@ -82,6 +93,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/reset-password'
+    | '/api/public/admin/$action'
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
@@ -90,6 +102,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  ApiPublicAdminActionRoute: typeof ApiPublicAdminActionRoute
   ApiPublicMetaCallbackRoute: typeof ApiPublicMetaCallbackRoute
   ApiPublicMetaProcessRoute: typeof ApiPublicMetaProcessRoute
   ApiPublicMetaWebhookRoute: typeof ApiPublicMetaWebhookRoute
@@ -109,6 +122,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/admin/$action': {
+      id: '/api/public/admin/$action'
+      path: '/api/public/admin/$action'
+      fullPath: '/api/public/admin/$action'
+      preLoaderRoute: typeof ApiPublicAdminActionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/meta/callback': {
@@ -138,6 +158,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  ApiPublicAdminActionRoute: ApiPublicAdminActionRoute,
   ApiPublicMetaCallbackRoute: ApiPublicMetaCallbackRoute,
   ApiPublicMetaProcessRoute: ApiPublicMetaProcessRoute,
   ApiPublicMetaWebhookRoute: ApiPublicMetaWebhookRoute,

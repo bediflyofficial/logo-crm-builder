@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -61,7 +60,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
-import { createClientWorkspace, ensureBediflyAdminAccess, inviteSalesExecutive } from "@/lib/crm.functions";
+import { callAdminApi } from "@/lib/crm-admin-client";
 import { hasCrmWorkspaceAccess, isWithinDateFilter, resolveWorkspaceSelection } from "@/lib/crm-access";
 import { createXlsx, normalizeHeader, normalizeLeadPhone, parseCsv, parseLeadDate, parseXlsx } from "@/lib/crm-spreadsheets";
 import type { Database } from "@/integrations/supabase/types";
@@ -145,9 +144,9 @@ export const Route = createFileRoute("/")({
 
 function BediflyCRM() {
   const queryClient = useQueryClient();
-  const makeClient = useServerFn(createClientWorkspace);
-  const verifyPlatformAccess = useServerFn(ensureBediflyAdminAccess);
-  const inviteEmployee = useServerFn(inviteSalesExecutive);
+  const makeClient = ({ data }: { data: unknown }) => callAdminApi<{ id: string; name: string }>("create-workspace", data);
+  const verifyPlatformAccess = () => callAdminApi<{ isPlatformAdmin: boolean }>("ensure-platform-admin");
+  const inviteEmployee = ({ data }: { data: unknown }) => callAdminApi("invite-sales-executive", data);
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">("signin");

@@ -40,3 +40,4 @@ use the editor.
 - Store Page credentials separately from browser-readable assets, encrypted with authenticated encryption; safe asset metadata uses an explicit allowlist.
 - Claim Meta lead jobs with database leases and save leads, round-robin assignment, raw responses and notifications in one database transaction to prevent duplicate or partial imports.
 - Keep per-workspace Conversions API credentials in a table with no browser grants, reached only through admin-checked server functions; production enabling requires a Meta-accepted test event.
+- Privileged CRM admin actions (workspace creation, invitations, role assignment) run only in `/api/public/admin/$action` on Lovable hosting, verifying the bearer user and platform/org-admin role per request with a CORS origin allowlist; externally hosted frontends (crm.bedifly.com) never hold the service-role key.
