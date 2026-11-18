@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
-import { extractLeadNotifications, canSendMetaConversion, metaSettingsSchema, mapMetaLead, metaRetryDelay } from "@/lib/meta-rules";
+import { assessMetaAccess, extractLeadNotifications, canSendMetaConversion, metaSettingsSchema, mapMetaLead, metaRetryDelay, missingMetaPermissions } from "@/lib/meta-rules";
 import { verifyMetaSignature } from "@/lib/meta-webhook.server";
 
 describe("Meta webhook security", () => {
@@ -43,3 +43,24 @@ it("backs off temporary failures and waits fifteen minutes after rate limits", (
   expect(metaRetryDelay(1, true)).toBe(900000);
 });
 it("defaults automatic synchronization to disabled", () => expect(metaSettingsSchema.parse({ organizationId: "00000000-0000-4000-8000-000000000001", defaultStatus: "New Lead", defaultQuality: "Warm", assignmentMode: "manual", executiveIds: [], duplicateHandling: "flag", notificationsEnabled: true }).autoSyncEnabled).toBe(false));
+
+describe("Facebook permission-aware health", () => {
+  const granted = ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read", "business_management"];
+  it("reports every missing required permission", () => {
+    expect(missingMetaPermissions(["pages_show_list", "ads_read"])).toEqual(["leads_retrieval", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "business_management"]);
+  });
+  it("does not mark a valid token healthy when lead permissions are missing", () => {
+    const result = assessMetaAccess({ tokenValid: true, expired: false, wrongApp: false, grantedPermissions: ["pages_show_list", "pages_read_engagement", "ads_read", "business_management"] });
+    expect(result.tokenValid).toBe(true);
+    expect(result.healthy).toBe(false);
+    expect(result.permissionsComplete).toBe(false);
+    expect(result.missingPermissions).toEqual(["leads_retrieval", "pages_manage_ads", "pages_manage_metadata"]);
+    expect(result.status).toBe("connected");
+  });
+  it("accepts health only when the token and all required permissions are valid", () => {
+    expect(assessMetaAccess({ tokenValid: true, expired: false, wrongApp: false, grantedPermissions: granted }).healthy).toBe(true);
+  });
+  it("keeps an expired token unhealthy even with every permission", () => {
+    expect(assessMetaAccess({ tokenValid: true, expired: true, wrongApp: false, grantedPermissions: granted })).toMatchObject({ healthy: false, tokenValid: false, status: "expired" });
+  });
+});

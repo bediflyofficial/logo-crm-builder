@@ -1,5 +1,53 @@
 import { z } from "zod";
 
+export const META_PERMISSIONS = ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read", "business_management"] as const;
+export const META_EVENT_NAMES = ["QualifiedLead", "Purchase"] as const;
+export const DEFAULT_META_CONVERSION_RULES = [
+  { triggerType: "status", triggerValue: "Qualified", eventName: "QualifiedLead", enabled: false },
+  { triggerType: "status", triggerValue: "Converted", eventName: "Purchase", enabled: false },
+] as const;
+
+export const metaConversionRuleSchema = z.object({
+  organizationId: z.string().uuid(),
+  triggerType: z.enum(["status", "quality"]),
+  triggerValue: z.string().trim().min(1).max(100),
+  eventName: z.enum(META_EVENT_NAMES).nullable(),
+  enabled: z.boolean(),
+}).superRefine((value, context) => {
+  if (value.triggerType === "quality" && !["Hot", "Warm", "Cold", "Junk"].includes(value.triggerValue)) {
+    context.addIssue({ code: "custom", message: "Choose a valid lead quality.", path: ["triggerValue"] });
+  }
+  if (!value.eventName && value.enabled) {
+    context.addIssue({ code: "custom", message: "Choose a Meta event before enabling this rule.", path: ["enabled"] });
+  }
+});
+
+export function missingMetaPermissions(granted: readonly string[]) {
+  return META_PERMISSIONS.filter((permission) => !granted.includes(permission));
+}
+
+export function assessMetaAccess(input: { tokenValid: boolean; expired: boolean; wrongApp: boolean; grantedPermissions: readonly string[] }) {
+  const missingPermissions = missingMetaPermissions(input.grantedPermissions);
+  const tokenValid = input.tokenValid && !input.expired && !input.wrongApp;
+  const permissionsComplete = missingPermissions.length === 0;
+  return {
+    healthy: tokenValid && permissionsComplete,
+    tokenValid,
+    permissionsComplete,
+    missingPermissions,
+    status: tokenValid ? "connected" as const : input.expired ? "expired" as const : "revoked" as const,
+    message: input.wrongApp
+      ? "This access belongs to a different Meta app. Connect again."
+      : input.expired
+        ? "Facebook access has expired. Reconnect to renew it."
+        : !tokenValid
+          ? "Facebook access is no longer valid. Reconnect to renew it."
+          : permissionsComplete
+            ? "Facebook access and all required permissions are valid."
+            : `Facebook access is valid, but required permissions are missing: ${missingPermissions.join(", ")}.`,
+  };
+}
+
 export const metaSettingsSchema = z.object({
   organizationId: z.string().uuid(),
   defaultStatus: z.string().trim().min(1).max(100),

@@ -120,6 +120,13 @@
       "when": 1794920332978,
       "tag": "0016_meta_oauth_opener_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794998600655,
+      "tag": "0017_meta_conversion_lifecycle_rules",
+      "breakpoints": true
     }
   ]
 }

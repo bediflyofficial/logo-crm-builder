@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { AdminError, authenticateCaller } from "@/lib/crm-admin.server";
 import { isAllowedCrmOrigin } from "@/lib/crm-admin-rules";
 import { authorizeMetaAction, type MetaAction, type MetaAuthorizationCaller, type MetaCapiConfigView } from "@/lib/meta-api-rules";
-import { canEnableCapi, capiConfigSchema, capiStatusAfterSave, metaSettingsSchema, type CapiStatus } from "@/lib/meta-rules";
+import { assessMetaAccess, canEnableCapi, capiConfigSchema, capiStatusAfterSave, metaConversionRuleSchema, metaSettingsSchema, missingMetaPermissions, type CapiStatus } from "@/lib/meta-rules";
 import { hashMetaState } from "@/lib/meta-crypto.server";
 
 type Caller = Awaited<ReturnType<typeof authenticateCaller>>;
@@ -84,14 +84,16 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       let assetsQuery = caller.supabase.from("meta_assets").select("*");
       let logsQuery = caller.supabase.from("meta_sync_logs").select("*").order("created_at", { ascending: false }).limit(50);
       let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,event_name,status,occurred_at,error_code").order("created_at", { ascending: false }).limit(50);
+      let rulesQuery = caller.supabase.from("meta_conversion_rules").select("*").order("trigger_type").order("trigger_value");
       if (data.organizationId) {
         connectionsQuery = connectionsQuery.eq("organization_id", data.organizationId);
         assetsQuery = assetsQuery.eq("organization_id", data.organizationId);
         logsQuery = logsQuery.eq("organization_id", data.organizationId);
         eventsQuery = eventsQuery.eq("organization_id", data.organizationId);
+        rulesQuery = rulesQuery.eq("organization_id", data.organizationId);
       }
-      const [connections, assets, logs, events] = await Promise.all([connectionsQuery, assetsQuery, logsQuery, eventsQuery]);
-      for (const result of [connections, assets, logs, events]) if (result.error) throw new AdminError("Meta integration records could not be loaded.", 500);
+      const [connections, assets, logs, events, rules] = await Promise.all([connectionsQuery, assetsQuery, logsQuery, eventsQuery, rulesQuery]);
+      for (const result of [connections, assets, logs, events, rules]) if (result.error) throw new AdminError("Meta integration records could not be loaded.", 500);
       const settings = data.organizationId ? await caller.supabase.from("meta_integration_settings").select("*").eq("organization_id", data.organizationId).maybeSingle() : null;
       if (settings?.error) throw new AdminError("Meta settings could not be loaded.", 500);
       return {
@@ -100,6 +102,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
         logs: logs.data ?? [],
         events: events.data ?? [],
         settings: settings?.data ?? null,
+        conversionRules: rules.data ?? [],
         missingConfiguration: APP_SECRETS.filter((name) => !process.env[name]),
         oauthImplemented: true as const,
         processorImplemented: true as const,
@@ -121,6 +124,29 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       }
       const { error } = await caller.supabase.from("meta_integration_settings").upsert({ organization_id: data.organizationId, auto_sync_enabled: data.autoSyncEnabled, default_status: data.defaultStatus, default_quality: data.defaultQuality, assignment_mode: data.assignmentMode, executive_ids: data.executiveIds, duplicate_handling: data.duplicateHandling, notifications_enabled: data.notificationsEnabled, updated_at: new Date().toISOString() });
       if (error) throw new AdminError("Meta settings could not be saved.", 500);
+      return { saved: true };
+    }
+    case "save-conversion-rule": {
+      const data = metaConversionRuleSchema.parse(body);
+      await authorize(caller, action, data.organizationId);
+      if (data.triggerType === "status") {
+        const { data: statuses, error } = await caller.supabase.from("lead_statuses").select("id").eq("organization_id", data.organizationId).eq("name", data.triggerValue).limit(1);
+        if (error || !statuses?.length) throw new AdminError("Choose a lead status from this workspace.");
+      }
+      if (!data.eventName) {
+        const { error } = await caller.supabase.from("meta_conversion_rules").delete().eq("organization_id", data.organizationId).eq("trigger_type", data.triggerType).eq("trigger_value", data.triggerValue);
+        if (error) throw new AdminError("Conversion rule could not be removed.", 500);
+        return { saved: true, rule: null };
+      }
+      const { error } = await caller.supabase.from("meta_conversion_rules").upsert({
+        organization_id: data.organizationId,
+        trigger_type: data.triggerType,
+        trigger_value: data.triggerValue,
+        event_name: data.eventName,
+        enabled: data.enabled,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "organization_id,trigger_type,trigger_value" });
+      if (error) throw new AdminError("Conversion rule could not be saved.", 500);
       return { saved: true };
     }
     case "start-oauth": {
@@ -161,7 +187,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       if (error || !connection) throw new AdminError("Facebook authorization succeeded but the connection could not be saved. Connect again.", 500);
       const { error: auditError } = await caller.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: caller.userId, action: "meta_connected", entity_type: "meta_connection", entity_id: connection.id });
       if (auditError) throw new AdminError("Facebook is connected, but its audit entry could not be saved.", 500);
-      return { connected: true, connectionId: connection.id, missingPermissions: ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read", "business_management"].filter((item) => !granted.includes(item)) };
+      return { connected: true, connectionId: connection.id, missingPermissions: missingMetaPermissions(granted) };
     }
     case "refresh-assets": {
       const data = z.object({ organizationId: z.string().uuid(), connectionId: z.string().uuid() }).parse(body);
@@ -209,26 +235,30 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       const { data: connection, error } = await supabaseAdmin.from("meta_connections").select("id,encrypted_access_token").eq("id", data.connectionId).eq("organization_id", data.organizationId).maybeSingle();
       if (error || !connection) throw new AdminError("Facebook connection was not found in this workspace.", 404);
       if (!connection.encrypted_access_token) throw new AdminError("This Facebook account is disconnected. Connect it again.");
-      const { metaConfig, metaRequest } = await import("@/lib/meta-api.server");
+      const { metaConfig, metaList, metaRequest } = await import("@/lib/meta-api.server");
       const config = metaConfig();
       const { decryptMetaToken } = await import("@/lib/meta-crypto.server");
       const userToken = decryptMetaToken(connection.encrypted_access_token, config.encryptionSecret);
       const now = new Date().toISOString();
-      let result: { healthy: boolean; status: "connected" | "expired" | "revoked"; expiresAt: string | null; scopes: string[]; message: string };
+      let result: ReturnType<typeof assessMetaAccess> & { expiresAt: string | null; scopes: string[] };
       try {
         const debug = z.object({ data: z.object({ is_valid: z.boolean(), app_id: z.string().optional(), expires_at: z.number().optional(), data_access_expires_at: z.number().optional(), scopes: z.array(z.string()).optional(), error: z.object({ message: z.string().optional() }).optional() }) }).parse(await metaRequest("debug_token", null, { input_token: userToken, access_token: `${config.appId}|${config.appSecret}` })).data;
         const expiresAt = debug.expires_at ? new Date(debug.expires_at * 1000).toISOString() : null;
         const wrongApp = debug.app_id !== undefined && debug.app_id !== config.appId;
         const expired = Boolean(debug.expires_at && debug.expires_at * 1000 <= Date.now());
-        const healthy = debug.is_valid && !wrongApp && !expired;
-        result = { healthy, status: healthy ? "connected" : expired ? "expired" : "revoked", expiresAt, scopes: debug.scopes ?? [], message: healthy ? "Facebook access is valid." : wrongApp ? "This access belongs to a different Meta app. Connect again." : expired ? "Facebook access has expired. Reconnect to renew it." : `Facebook access is no longer valid${debug.error?.message ? `: ${debug.error.message}` : ""}. Reconnect to renew it.` };
+        const tokenCanRead = debug.is_valid && !wrongApp && !expired;
+        const grantedPermissions = tokenCanRead
+          ? (await metaList("me/permissions", userToken, "permission,status")).filter((item) => item["status"] === "granted" && typeof item["permission"] === "string").map((item) => String(item["permission"]))
+          : debug.scopes ?? [];
+        const assessed = assessMetaAccess({ tokenValid: debug.is_valid, expired, wrongApp, grantedPermissions });
+        result = { ...assessed, message: !assessed.tokenValid && !wrongApp && !expired && debug.error?.message ? `${assessed.message} ${debug.error.message}` : assessed.message, expiresAt, scopes: grantedPermissions };
       } catch (checkError) {
         const { MetaApiError } = await import("@/lib/meta-api.server");
         if (!(checkError instanceof MetaApiError)) throw new AdminError(safeError(checkError));
         await supabaseAdmin.from("meta_sync_logs").insert({ organization_id: data.organizationId, connection_id: connection.id, sync_type: "health_check", status: "failed", records_processed: 0, error_message: safeError(checkError) });
         throw checkError;
       }
-      const update = { connection_status: result.status, token_expires_at: result.expiresAt, updated_at: now, ...(result.scopes.length ? { granted_permissions: result.scopes } : {}) };
+      const update = { connection_status: result.status, token_expires_at: result.expiresAt, granted_permissions: result.scopes, updated_at: now };
       const { error: updateError } = await supabaseAdmin.from("meta_connections").update(update).eq("id", connection.id).eq("organization_id", data.organizationId);
       if (updateError) throw new AdminError("Facebook access was checked but its status could not be saved.", 500);
       await supabaseAdmin.from("meta_sync_logs").insert({ organization_id: data.organizationId, connection_id: connection.id, sync_type: "health_check", status: result.healthy ? "succeeded" : "failed", records_processed: 0, error_message: result.healthy ? null : result.message });

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const META_PERMISSIONS = ["leads_retrieval", "pages_show_list", "pages_read_engagement", "pages_manage_ads", "pages_manage_metadata", "ads_read", "business_management"];
+export { META_PERMISSIONS } from "@/lib/meta-rules";
 
 export function metaConfig() {
   const appId = process.env["META_APP_ID"];

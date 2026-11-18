@@ -83,7 +83,7 @@ type PageKey = "overview" | "clients" | "leads" | "pipeline" | "team" | "follow-
 
 const STATUSES = [
   "New Lead", "Contacted", "Interested", "Qualified", "Meeting Scheduled", "Negotiation", "Converted",
-  "Not Interested", "Invalid Number", "Duplicate", "Junk Lead",
+  "Unqualified", "Lost", "Not Interested", "Invalid Number", "Duplicate", "Junk Lead",
 ];
 const QUALITIES = ["Hot", "Warm", "Cold", "Junk"] as const;
 const DEFAULT_SCORING: ScoringValues = {
@@ -277,7 +277,7 @@ function BediflyCRM() {
           supabase.from("organization_members").select("*").in("organization_id", orgIds).order("joined_at", { ascending: false }),
           supabase.from("user_roles").select("user_id, role, organization_id").in("organization_id", orgIds),
           supabase.from("follow_ups").select("*").in("organization_id", orgIds).order("scheduled_at").limit(500),
-          supabase.from("lead_statuses").select("name").in("organization_id", orgIds).order("position"),
+          supabase.from("lead_statuses").select("name").in("organization_id", targetId ? [targetId] : orgIds).order("position"),
         ]);
         if (memberResult.error) throw memberResult.error;
         if (roleResult.error) throw roleResult.error;

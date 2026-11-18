@@ -23,9 +23,9 @@ function caller({ platform = false, adminWorkspaces = [] as string[] } = {}): Me
 }
 
 describe("Meta Lovable API authorization", () => {
-  it("assigns every one of the 18 actions an explicit authorization scope", () => {
-    expect(META_ACTIONS).toHaveLength(18);
-    expect(new Set(META_ACTIONS).size).toBe(18);
+  it("assigns every one of the 19 actions an explicit authorization scope", () => {
+    expect(META_ACTIONS).toHaveLength(19);
+    expect(new Set(META_ACTIONS).size).toBe(19);
     expect([...META_ORG_ACTIONS, ...META_PLATFORM_ACTIONS, "overview"].sort()).toEqual([...META_ACTIONS].sort());
   });
 

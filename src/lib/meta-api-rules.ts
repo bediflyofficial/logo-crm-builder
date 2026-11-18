@@ -3,6 +3,7 @@ import type { CapiStatus } from "@/lib/meta-rules";
 
 export const META_ORG_ACTIONS = [
   "save-settings",
+  "save-conversion-rule",
   "start-oauth",
   "complete-oauth",
   "refresh-assets",
@@ -61,6 +62,7 @@ export type MetaOverview = {
   logs: Database["public"]["Tables"]["meta_sync_logs"]["Row"][];
   events: ConversionEventView[];
   settings: Database["public"]["Tables"]["meta_integration_settings"]["Row"] | null;
+  conversionRules: Database["public"]["Tables"]["meta_conversion_rules"]["Row"][];
   missingConfiguration: string[];
   oauthImplemented: true;
   processorImplemented: true;
