@@ -708,6 +708,7 @@ export type Database = {
           provider_received_at: string | null
           sent_dataset_id: string | null
           status: string
+          test_event: boolean
           value: number | null
         }
         Insert: {
@@ -728,6 +729,7 @@ export type Database = {
           provider_received_at?: string | null
           sent_dataset_id?: string | null
           status?: string
+          test_event?: boolean
           value?: number | null
         }
         Update: {
@@ -748,6 +750,7 @@ export type Database = {
           provider_received_at?: string | null
           sent_dataset_id?: string | null
           status?: string
+          test_event?: boolean
           value?: number | null
         }
         Relationships: [
@@ -1301,6 +1304,7 @@ export type Database = {
           provider_received_at: string | null
           sent_dataset_id: string | null
           status: string
+          test_event: boolean
           value: number | null
         }
         SetofOptions: {
@@ -1366,6 +1370,37 @@ export type Database = {
           provider_received_at: string | null
           sent_dataset_id: string | null
           status: string
+          test_event: boolean
+          value: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meta_conversion_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reserve_meta_conversion_test: {
+        Args: { _event_id: string; _organization_id: string }
+        Returns: {
+          action_source: string
+          attempts: number
+          consent_id: string | null
+          created_at: string
+          currency: string | null
+          error_code: string | null
+          event_name: string
+          id: string
+          lead_id: string
+          next_attempt_at: string | null
+          occurred_at: string
+          organization_id: string
+          outcome_reference: string
+          provider_events_received: number | null
+          provider_received_at: string | null
+          sent_dataset_id: string | null
+          status: string
+          test_event: boolean
           value: number | null
         }
         SetofOptions: {

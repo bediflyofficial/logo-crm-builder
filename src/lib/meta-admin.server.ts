@@ -86,7 +86,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       let connectionsQuery = caller.supabase.from("meta_connections").select("id,organization_id,facebook_name,connection_status,token_expires_at,last_sync_at,granted_permissions");
       let assetsQuery = caller.supabase.from("meta_assets").select("*");
       let logsQuery = caller.supabase.from("meta_sync_logs").select("*").order("created_at", { ascending: false }).limit(50);
-      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,lead_id,consent_id,event_name,outcome_reference,status,occurred_at,value,currency,error_code").order("created_at", { ascending: false }).limit(50);
+      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,lead_id,consent_id,event_name,outcome_reference,status,occurred_at,value,currency,error_code,test_event,sent_dataset_id,provider_received_at,provider_events_received").order("created_at", { ascending: false }).limit(50);
       let rulesQuery = caller.supabase.from("meta_conversion_rules").select("*").order("trigger_type").order("trigger_value");
       if (data.organizationId) {
         connectionsQuery = connectionsQuery.eq("organization_id", data.organizationId);
@@ -424,6 +424,15 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       const { capiDispatchStore } = await import("@/lib/meta-capi-store.server");
       return dispatchCapiEvent(capiDispatchStore, data.organizationId, data.eventId);
     }
+    case "send-conversion-test": {
+      const data = orgInput.extend({ eventId: z.string().uuid() }).parse(body);
+      await authorize(caller, action, data.organizationId);
+      const row = await loadConfig(data.organizationId);
+      if (!row?.test_event_code?.trim()) throw new AdminError("Add a Test Event Code from Meta Events Manager first.");
+      const { dispatchCapiEvent } = await import("@/lib/meta-capi-sender.server");
+      const { capiDispatchStore } = await import("@/lib/meta-capi-store.server");
+      return dispatchCapiEvent(capiDispatchStore, data.organizationId, data.eventId, undefined, row.test_event_code);
+    }
     case "test-app": {
       await authorize(caller, action, null);
       const appId = process.env["META_APP_ID"];
@@ -444,7 +453,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
         supabaseAdmin.from("organizations").select("id,name,status").is("deleted_at", null).order("name"),
         supabaseAdmin.from("meta_capi_configs").select("organization_id,dataset_id,status,capi_enabled,last_tested_at,last_test_event_at,last_error"),
         supabaseAdmin.from("meta_connections").select("organization_id,connection_status,facebook_name"),
-        supabaseAdmin.from("meta_conversion_events").select("organization_id,status").gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).limit(10000),
+        supabaseAdmin.from("meta_conversion_events").select("organization_id,status").eq("test_event", false).gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).limit(10000),
       ]);
       if (orgs.error || configs.error || connections.error || events.error) throw new AdminError("Client integration statuses could not be loaded.", 500);
       return (orgs.data ?? []).filter((org) => org.name).map((org) => {

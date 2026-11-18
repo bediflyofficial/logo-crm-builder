@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildCapiPayload, capiFailureCode, dispatchCapiEvent, normalizeMetaPhone, transmitCapiEvent, type CapiDispatchStore, type CapiEvent } from "@/lib/meta-capi-sender.server";
 import { MetaApiError } from "@/lib/meta-api.server";
 
-const event: CapiEvent = { id: "11111111-1111-4111-8111-111111111111", organization_id: "workspace-a", lead_id: "lead-a", event_name: "QualifiedLead", occurred_at: new Date().toISOString(), action_source: "system_generated", value: null, currency: null, status: "processing", sent_dataset_id: "123456789" };
+const event: CapiEvent = { id: "11111111-1111-4111-8111-111111111111", organization_id: "workspace-a", lead_id: "lead-a", event_name: "QualifiedLead", occurred_at: new Date().toISOString(), action_source: "system_generated", value: null, currency: null, status: "processing", sent_dataset_id: "123456789", test_event: false };
 const matching = { email: "  CUSTOMER@EXAMPLE.COM ", phone: "+1 (202) 555-0123" };
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 function store(): CapiDispatchStore {
@@ -58,11 +58,30 @@ describe("Phase 3 secure CAPI sender", () => {
     const db = store(), send = vi.fn(async () => 1);
     const results = await Promise.all([dispatchCapiEvent(db, event.organization_id, event.id, send), dispatchCapiEvent(db, event.organization_id, event.id, send)]);
     expect(send).toHaveBeenCalledTimes(1); expect(results.map(r => r.status).sort()).toEqual(["not_eligible", "sent"]);
+    expect(db.reserve).toHaveBeenCalledWith(event.organization_id, event.id, false);
     expect(db.finish).toHaveBeenCalledWith(event, "sent", null, 1);
   });
   it.each(["consent missing", "withdrawal", "GPC", "matching refused", "disabled production", "ineligible Dataset"])("blocks %s before reading matching fields", async () => {
     const db = store(); db.preflight = vi.fn(async () => false); const send = vi.fn(async () => 1);
     expect((await dispatchCapiEvent(db, event.organization_id, event.id, send)).status).toBe("blocked"); expect(send).not.toHaveBeenCalled(); expect(db.matching).not.toHaveBeenCalled();
+  });
+  it("sends the same outbox ID and original timestamp to Meta Test Events without production mode", async () => {
+    const db = store();
+    db.reserve = vi.fn(async (_org, _id, testEvent) => testEvent ? { ...event, test_event: true } : null);
+    const send = vi.fn(async (_credentials: { datasetId: string; token: string }, _payload: ReturnType<typeof buildCapiPayload>, _testEventCode?: string) => 1);
+    const result = await dispatchCapiEvent(db, event.organization_id, event.id, send, "TEST_PHASE3");
+    expect(result).toEqual({ status: "sent", eventsReceived: 1 });
+    expect(db.reserve).toHaveBeenCalledWith(event.organization_id, event.id, true);
+    expect(db.preflight).toHaveBeenCalledWith(expect.objectContaining({ test_event: true }), expect.anything(), true);
+    expect(send.mock.calls[0]?.[2]).toBe("TEST_PHASE3");
+    expect(send.mock.calls[0]?.[1]).toMatchObject({ event_id: event.id, event_time: Math.floor(Date.parse(event.occurred_at) / 1000) });
+  });
+  it("rejects a reservation whose test and production delivery modes differ", async () => {
+    const db = store(), send = vi.fn(async () => 1);
+    const result = await dispatchCapiEvent(db, event.organization_id, event.id, send, "TEST_PHASE3");
+    expect(result.errorCode).toBe("delivery_mode_mismatch");
+    expect(send).not.toHaveBeenCalled();
+    expect(db.credentials).not.toHaveBeenCalled();
   });
   it("rechecks withdrawal immediately before transmission", async () => {
     const db = store(); db.preflight = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false); const send = vi.fn(async () => 1);

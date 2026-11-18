@@ -21,6 +21,7 @@ export const META_ORG_ACTIONS = [
   "set-capi-enabled",
   "review-dataset-eligibility",
   "send-conversion",
+  "send-conversion-test",
   "disconnect-capi",
 ] as const;
 
@@ -59,7 +60,7 @@ export async function authorizeMetaAction(
 }
 
 type ConnectionView = Pick<Database["public"]["Tables"]["meta_connections"]["Row"], "id" | "organization_id" | "facebook_name" | "connection_status" | "token_expires_at" | "last_sync_at" | "granted_permissions">;
-type ConversionEventView = Pick<Database["public"]["Tables"]["meta_conversion_events"]["Row"], "id" | "organization_id" | "lead_id" | "consent_id" | "event_name" | "outcome_reference" | "status" | "occurred_at" | "value" | "currency" | "error_code">;
+type ConversionEventView = Pick<Database["public"]["Tables"]["meta_conversion_events"]["Row"], "id" | "organization_id" | "lead_id" | "consent_id" | "event_name" | "outcome_reference" | "status" | "occurred_at" | "value" | "currency" | "error_code" | "test_event" | "sent_dataset_id" | "provider_received_at" | "provider_events_received">;
 
 export type MetaOverview = {
   connections: ConnectionView[];

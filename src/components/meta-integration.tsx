@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, Clock3, Facebook, LoaderCircle, RefreshCw, Save, ShieldCheck, Unplug } from "lucide-react";
+import { Cable, CheckCircle2, Clock3, Facebook, LoaderCircle, RefreshCw, Save, Send, ShieldCheck, Unplug } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,17 @@ export function MetaIntegration({ organizationId, members, statuses, onOpenWorks
     catch (error) { toast.error(error instanceof Error ? error.message : "Facebook action failed."); }
     finally { await invalidate(); setBusy(null); }
   }
+  async function sendConversionTest(eventId: string) {
+    if (!organizationId || busy) return;
+    setBusy(`conversion-test-${eventId}`);
+    try {
+      const result = await callMetaApi<{ status: string; eventsReceived: number; errorCode?: string }>("send-conversion-test", { organizationId, eventId });
+      if (result.status !== "sent" || result.eventsReceived !== 1) throw new Error(result.errorCode ? `Meta test event was not accepted: ${result.errorCode.replaceAll("_", " ")}.` : "This event is not eligible. Check consent, Dataset eligibility, the test code and the original event time.");
+      toast.success("Meta accepted the test event. Check Events Manager → Test events.");
+      await Promise.all([invalidate(), cache.invalidateQueries({ queryKey: ["meta-capi", organizationId] }), cache.invalidateQueries({ queryKey: ["meta-client-statuses"] })]);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "The test event could not be sent."); }
+    finally { setBusy(null); }
+  }
   if (query.isPending) return <div className="flex items-center gap-2 text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading Meta integrations</div>;
   if (query.error) return <div role="alert" className="border-l-2 border-destructive p-4 text-sm text-destructive">{query.error.message}<Button variant="outline" className="ml-3" onClick={() => void query.refetch()}>Retry</Button></div>;
   const data = query.data;
@@ -74,7 +85,25 @@ export function MetaIntegration({ organizationId, members, statuses, onOpenWorks
     {tab === "sync settings" && (organizationId ? <SyncSettings key={`${organizationId}-${data.settings?.updated_at ?? "new"}`} organizationId={organizationId} settings={data.settings} members={members} statuses={statuses} /> : <Empty title="Select a client workspace" detail="Synchronization settings belong to an individual client." />)}
     {tab === "sync history" && <section><h3 className="font-semibold">Synchronization history</h3>{data.logs.length ? data.logs.map((log) => <div key={log.id} className="grid gap-2 border-b border-border py-4 text-sm sm:grid-cols-3"><span>{log.sync_type}</span><span>{log.status} · {log.records_processed} leads</span><span className="text-muted-foreground">{new Date(log.created_at).toLocaleString()}</span>{log.error_message && <span className="break-words text-xs text-destructive sm:col-span-3">{log.error_message}</span>}</div>) : <Empty title="No synchronization runs" detail="Runs will appear here once the lead processor is activated." />}</section>}
     {tab === "consent" && organizationId && <MetaConsentManager organizationId={organizationId} />}
-    {tab === "conversions" && <section className="space-y-5"><div><h3 className="font-semibold">Conversions API</h3><p className="mt-2 text-sm text-muted-foreground">QualifiedLead · Purchase · Pixel / Dataset</p></div>{organizationId ? <><CapiConfigForm organizationId={organizationId} /><MetaConversionRules organizationId={organizationId} statuses={statuses} rules={data.conversionRules} onSaved={invalidate} /></> : <><p className="text-sm text-muted-foreground">CAPI status and event delivery for every client workspace.</p><ClientStatusTable onOpenWorkspace={onOpenWorkspace} /></>}<h4 className="pt-2 text-sm font-semibold">Recent conversion events</h4>{data.events.length ? data.events.map((event) => <div key={event.id} className="grid gap-2 border-b border-border py-3 text-sm md:grid-cols-[1fr_auto]"><div><p className="font-medium">{event.event_name}{event.value !== null ? ` · ${event.value} ${event.currency ?? ""}` : ""}</p><p className="mt-1 text-xs text-muted-foreground">{event.outcome_reference} · {new Date(event.occurred_at).toLocaleString()}</p><p className="mt-1 break-all text-xs text-muted-foreground">Event ID: {event.id}</p></div><span className={event.status === "blocked" ? "text-destructive" : "text-muted-foreground"}>{event.status}{event.error_code ? ` · ${event.error_code}` : ""}</span></div>) : <Empty title="No conversion events" detail="No customer data has been transmitted to Meta." />}</section>}
+    {tab === "conversions" && <section className="space-y-5">
+      <div><h3 className="font-semibold">Conversions API</h3><p className="mt-2 text-sm text-muted-foreground">QualifiedLead · Purchase · Pixel / Dataset</p></div>
+      {organizationId ? <><CapiConfigForm organizationId={organizationId} /><MetaConversionRules organizationId={organizationId} statuses={statuses} rules={data.conversionRules} onSaved={invalidate} /></> : <><p className="text-sm text-muted-foreground">CAPI status and event delivery for every client workspace.</p><ClientStatusTable onOpenWorkspace={onOpenWorkspace} /></>}
+      <h4 className="pt-2 text-sm font-semibold">Recent conversion events</h4>
+      {organizationId && <p className="text-xs text-muted-foreground">Send test event uses the saved Meta Test Event Code and the existing outbox event. It does not enable production sending.</p>}
+      {data.events.length ? data.events.map((event) => <div key={event.id} className="grid gap-3 border-b border-border py-3 text-sm md:grid-cols-[1fr_auto]">
+        <div>
+          <p className="font-medium">{event.event_name}{event.value !== null ? ` · ${event.value} ${event.currency ?? ""}` : ""}{event.test_event ? " · Test" : ""}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{event.outcome_reference} · Original event time: {new Date(event.occurred_at).toLocaleString()}</p>
+          <p className="mt-1 break-all text-xs text-muted-foreground">Event ID: {event.id}</p>
+          {event.sent_dataset_id && <p className="mt-1 text-xs text-muted-foreground">Dataset: {event.sent_dataset_id} · {event.test_event ? "Meta Test Events" : "Production"}</p>}
+          {event.provider_received_at && <p className="mt-1 text-xs text-primary">Meta accepted {event.provider_events_received ?? 0} event · {new Date(event.provider_received_at).toLocaleString()}</p>}
+        </div>
+        <div className="flex flex-wrap items-start gap-2 md:justify-end">
+          <span className={event.status === "blocked" || event.status === "failed" ? "text-destructive" : "text-muted-foreground"}>{event.status}{event.error_code ? ` · ${event.error_code}` : ""}</span>
+          {organizationId && event.status === "pending" && <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void sendConversionTest(event.id)}>{busy === `conversion-test-${event.id}` ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}Send test event</Button>}
+        </div>
+      </div>) : <Empty title="No conversion events" detail="No customer data has been transmitted to Meta." />}
+    </section>}
   </div>;
 }
 

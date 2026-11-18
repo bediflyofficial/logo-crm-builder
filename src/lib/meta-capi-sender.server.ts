@@ -9,7 +9,7 @@ export class CapiDispatchError extends Error {
 export type CapiEvent = {
   id: string; organization_id: string; lead_id: string; event_name: string;
   occurred_at: string; action_source: string; value: number | null; currency: string | null;
-  status: string; sent_dataset_id: string | null;
+  status: string; sent_dataset_id: string | null; test_event: boolean;
 };
 export type CapiCredentials = { datasetId: string; token: string };
 export type CapiMatching = { email: string | null; phone: string | null };
@@ -59,27 +59,29 @@ export function capiFailureCode(error: unknown) {
 }
 
 export interface CapiDispatchStore {
-  reserve(organizationId: string, eventId: string): Promise<CapiEvent | null>;
+  reserve(organizationId: string, eventId: string, testEvent: boolean): Promise<CapiEvent | null>;
   credentials(event: CapiEvent): Promise<CapiCredentials>;
   matching(event: CapiEvent): Promise<CapiMatching>;
-  preflight(event: CapiEvent, credentials: CapiCredentials): Promise<boolean>;
+  preflight(event: CapiEvent, credentials: CapiCredentials, testEvent: boolean): Promise<boolean>;
   finish(event: CapiEvent, status: "sent" | "blocked" | "failed", code: string | null, received?: number): Promise<void>;
 }
 
 /** A single explicit dispatch, not a worker: uncertain results are never automatically replayed. */
-export async function dispatchCapiEvent(store: CapiDispatchStore, organizationId: string, eventId: string, transmit: (credentials: CapiCredentials, payload: ReturnType<typeof buildCapiPayload>) => Promise<number> = transmitCapiEvent) {
-  const event = await store.reserve(organizationId, eventId);
+export async function dispatchCapiEvent(store: CapiDispatchStore, organizationId: string, eventId: string, transmit: (credentials: CapiCredentials, payload: ReturnType<typeof buildCapiPayload>, testEventCode?: string) => Promise<number> = transmitCapiEvent, testEventCode?: string) {
+  const testEvent = Boolean(testEventCode);
+  const event = await store.reserve(organizationId, eventId, testEvent);
   if (!event) return { status: "not_eligible", eventsReceived: 0 };
   if (event.organization_id !== organizationId || event.id !== eventId) throw new CapiDispatchError("workspace_mismatch");
   try {
+    if (event.test_event !== testEvent) throw new CapiDispatchError("delivery_mode_mismatch");
     const credentials = await store.credentials(event);
     if (!credentials.token || credentials.datasetId !== event.sent_dataset_id) throw new CapiDispatchError("configuration_changed");
     // Check permission before reading any customer matching fields.
-    if (!await store.preflight(event, credentials)) throw new CapiDispatchError("consent_or_configuration_blocked");
+    if (!await store.preflight(event, credentials, testEvent)) throw new CapiDispatchError("consent_or_configuration_blocked");
     const payload = buildCapiPayload(event, await store.matching(event));
     // Last awaited operation before POST rechecks original/latest consent and configuration.
-    if (!await store.preflight(event, credentials)) throw new CapiDispatchError("consent_or_configuration_blocked");
-    const received = await transmit(credentials, payload);
+    if (!await store.preflight(event, credentials, testEvent)) throw new CapiDispatchError("consent_or_configuration_blocked");
+    const received = await transmit(credentials, payload, testEventCode);
     if (received !== 1) throw new CapiDispatchError("meta_response_unconfirmed");
     try { await store.finish(event, "sent", null, received); }
     catch { return { status: "receipt_persistence_failed", eventsReceived: received, errorCode: "receipt_persistence_failed" }; }

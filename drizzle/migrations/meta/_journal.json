@@ -141,6 +141,13 @@
       "when": 1795000263532,
       "tag": "0019_meta_capi_secure_dispatch",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795001245751,
+      "tag": "0020_meta_capi_test_event_dispatch",
+      "breakpoints": true
     }
   ]
 }
