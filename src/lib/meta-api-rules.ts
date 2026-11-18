@@ -23,6 +23,7 @@ export const META_ORG_ACTIONS = [
   "send-conversion",
   "send-conversion-test",
   "retry-conversion",
+  "conversion-analytics",
   "disconnect-capi",
 ] as const;
 
@@ -48,7 +49,7 @@ export async function authorizeMetaAction(
   action: MetaAction,
   organizationId: string | null,
 ) {
-  const platformOnly = action === "overview" && organizationId === null
+  const platformOnly = (action === "overview" || action === "conversion-analytics") && organizationId === null
     || (META_PLATFORM_ACTIONS as readonly string[]).includes(action);
   if (platformOnly) {
     const { data, error } = await caller.supabase.rpc("is_platform_admin");
@@ -61,7 +62,7 @@ export async function authorizeMetaAction(
 }
 
 type ConnectionView = Pick<Database["public"]["Tables"]["meta_connections"]["Row"], "id" | "organization_id" | "facebook_name" | "connection_status" | "token_expires_at" | "last_sync_at" | "granted_permissions">;
-type ConversionEventView = Pick<Database["public"]["Tables"]["meta_conversion_events"]["Row"], "id" | "organization_id" | "lead_id" | "consent_id" | "event_name" | "outcome_reference" | "status" | "occurred_at" | "value" | "currency" | "error_code" | "test_event" | "sent_dataset_id" | "provider_received_at" | "provider_events_received" | "attempts" | "next_attempt_at" | "failure_kind" | "last_attempt_at" | "lease_until" | "retry_requested_at">;
+type ConversionEventView = Pick<Database["public"]["Tables"]["meta_conversion_events"]["Row"], "id" | "organization_id" | "lead_id" | "consent_id" | "event_name" | "outcome_reference" | "status" | "occurred_at" | "value" | "currency" | "error_code" | "test_event" | "sent_dataset_id" | "provider_received_at" | "provider_events_received" | "attempts" | "next_attempt_at" | "failure_kind" | "last_attempt_at" | "lease_until" | "retry_requested_at" | "created_at">;
 type ConversionAttemptView = Pick<Database["public"]["Tables"]["meta_conversion_delivery_attempts"]["Row"], "id" | "event_id" | "organization_id" | "attempt_number" | "status" | "error_code" | "failure_kind" | "dataset_id" | "test_event" | "provider_events_received" | "started_at" | "finished_at">;
 
 export type MetaOverview = {

@@ -1407,6 +1407,16 @@ export type Database = {
         }
         Returns: string
       }
+      meta_conversion_analytics: {
+        Args: {
+          _event_name: string
+          _from: string
+          _organization_id: string
+          _test_mode: string
+          _to: string
+        }
+        Returns: Json
+      }
       recheck_meta_conversion_consent: {
         Args: { _event_id: string }
         Returns: {

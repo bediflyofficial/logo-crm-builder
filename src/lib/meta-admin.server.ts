@@ -6,6 +6,7 @@ import { authorizeMetaAction, type MetaAction, type MetaAuthorizationCaller, typ
 import { assessMetaAccess, canEnableCapi, capiConfigSchema, capiStatusAfterSave, metaConversionRuleSchema, metaSettingsSchema, missingMetaPermissions, type CapiStatus } from "@/lib/meta-rules";
 import { hashMetaState } from "@/lib/meta-crypto.server";
 import { metaConsentSchema, metaConsentWithdrawalSchema } from "@/lib/meta-consent";
+import { analyticsToExclusive, metaAnalyticsQuerySchema, metaAnalyticsSchema } from "@/lib/meta-analytics";
 
 type Caller = Awaited<ReturnType<typeof authenticateCaller>>;
 const orgInput = z.object({ organizationId: z.string().uuid() });
@@ -86,7 +87,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       let connectionsQuery = caller.supabase.from("meta_connections").select("id,organization_id,facebook_name,connection_status,token_expires_at,last_sync_at,granted_permissions");
       let assetsQuery = caller.supabase.from("meta_assets").select("*");
       let logsQuery = caller.supabase.from("meta_sync_logs").select("*").order("created_at", { ascending: false }).limit(50);
-      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,lead_id,consent_id,event_name,outcome_reference,status,occurred_at,value,currency,error_code,test_event,sent_dataset_id,provider_received_at,provider_events_received,attempts,next_attempt_at,failure_kind,last_attempt_at,lease_until,retry_requested_at").order("created_at", { ascending: false }).limit(50);
+      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,lead_id,consent_id,event_name,outcome_reference,status,occurred_at,value,currency,error_code,test_event,sent_dataset_id,provider_received_at,provider_events_received,attempts,next_attempt_at,failure_kind,last_attempt_at,lease_until,retry_requested_at,created_at").order("created_at", { ascending: false }).limit(50);
       let attemptsQuery = caller.supabase.from("meta_conversion_delivery_attempts").select("id,event_id,organization_id,attempt_number,status,error_code,failure_kind,dataset_id,test_event,provider_events_received,started_at,finished_at").order("started_at", { ascending: false }).limit(200);
       let rulesQuery = caller.supabase.from("meta_conversion_rules").select("*").order("trigger_type").order("trigger_value");
       if (data.organizationId) {
@@ -113,6 +114,19 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
         oauthImplemented: true as const,
         processorImplemented: true as const,
       };
+    }
+    case "conversion-analytics": {
+      const data = metaAnalyticsQuerySchema.parse(body);
+      await authorize(caller, action, data.organizationId);
+      const { data: analytics, error } = await supabaseAdmin.rpc("meta_conversion_analytics", {
+        _organization_id: data.organizationId as string,
+        _from: `${data.from}T00:00:00.000Z`,
+        _to: analyticsToExclusive(data.to),
+        _event_name: (data.eventName === "all" ? null : data.eventName) as string,
+        _test_mode: data.environment,
+      });
+      if (error) throw new AdminError("Conversion analytics could not be calculated.", 500);
+      return metaAnalyticsSchema.parse(analytics);
     }
     case "consent-list": {
       const data = orgInput.parse(body);

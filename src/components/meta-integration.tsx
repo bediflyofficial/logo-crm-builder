@@ -11,6 +11,7 @@ import { waitForMetaOAuth } from "@/lib/meta-oauth-client";
 import { CapiConfigForm, ClientStatusTable, MetaAppPanel, StatusBadge } from "@/components/meta-capi";
 import { MetaConversionRules } from "@/components/meta-conversion-rules";
 import { MetaConsentManager } from "@/components/meta-consent-manager";
+import { MetaConversionAnalytics } from "@/components/meta-conversion-analytics";
 import { missingMetaPermissions } from "@/lib/meta-rules";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -98,14 +99,16 @@ export function MetaIntegration({ organizationId, members, statuses, onOpenWorks
     {tab === "consent" && organizationId && <MetaConsentManager organizationId={organizationId} />}
     {tab === "conversions" && <section className="space-y-5">
       <div><h3 className="font-semibold">Conversions API</h3><p className="mt-2 text-sm text-muted-foreground">QualifiedLead · Purchase · Pixel / Dataset</p></div>
+      <MetaConversionAnalytics organizationId={organizationId} onOpenWorkspace={onOpenWorkspace} />
       {organizationId ? <><CapiConfigForm organizationId={organizationId} /><MetaConversionRules organizationId={organizationId} statuses={statuses} rules={data.conversionRules} onSaved={invalidate} /></> : <><p className="text-sm text-muted-foreground">CAPI status and event delivery for every client workspace.</p><ClientStatusTable onOpenWorkspace={onOpenWorkspace} /></>}
-      <h4 className="pt-2 text-sm font-semibold">Recent conversion events</h4>
+      <h4 id="conversion-events" className="scroll-mt-6 pt-2 text-sm font-semibold">Delivery monitoring · latest 50 events</h4>
       {organizationId && <p className="text-xs text-muted-foreground">Send test event uses the saved Meta Test Event Code and the existing outbox event. It does not enable production sending.</p>}
       {data.events.length ? data.events.map((event) => <div key={event.id} className="grid gap-3 border-b border-border py-3 text-sm md:grid-cols-[1fr_auto]">
         <div>
           <p className="font-medium">{event.event_name}{event.value !== null ? ` · ${event.value} ${event.currency ?? ""}` : ""}{event.test_event ? " · Test" : ""}</p>
           <p className="mt-1 text-xs text-muted-foreground">{event.outcome_reference} · Original event time: {new Date(event.occurred_at).toLocaleString()}</p>
           <p className="mt-1 break-all text-xs text-muted-foreground">Event ID: {event.id}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Created: {new Date(event.created_at).toLocaleString()}</p>
           {event.sent_dataset_id && <p className="mt-1 text-xs text-muted-foreground">Dataset: {event.sent_dataset_id} · {event.test_event ? "Meta Test Events" : "Production"}</p>}
           {event.provider_received_at && <p className="mt-1 text-xs text-primary">Meta accepted {event.provider_events_received ?? 0} event · {new Date(event.provider_received_at).toLocaleString()}</p>}
           <p className="mt-1 text-xs text-muted-foreground">{event.attempts} {event.attempts === 1 ? "attempt" : "attempts"}{event.next_attempt_at ? ` · Next automatic retry ${new Date(event.next_attempt_at).toLocaleString()}` : ""}{event.failure_kind ? ` · ${event.failure_kind} failure` : ""}</p>

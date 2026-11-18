@@ -44,3 +44,4 @@ use the editor.
 - Keep CAPI payload construction and single-event dispatch in server-only modules behind authorized Meta actions; atomically reserve the existing outbox and recheck consent immediately before POST so parallel requests cannot dispatch the same event.
 - Require explicit Dataset eligibility review separately from API access and test receipt; readable metadata and accepted tests do not establish policy eligibility.
 - Process the existing conversion outbox with database-backed leases and at most eight attempts; automatically retry only confirmed temporary provider responses, while timeouts, expired leases and uncertain receipts require an authorized manual retry so uncertain deliveries are not replayed blindly.
+- Serve CAPI analytics through authorized aggregate calculations over the existing outbox, separating test from production and exposing only counts, rates, dates and workspace names—never customer fields, credentials or raw provider responses.

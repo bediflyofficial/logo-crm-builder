@@ -23,9 +23,9 @@ function caller({ platform = false, adminWorkspaces = [] as string[] } = {}): Me
 }
 
 describe("Meta Lovable API authorization", () => {
-  it("assigns every one of the 26 actions an explicit authorization scope", () => {
-    expect(META_ACTIONS).toHaveLength(26);
-    expect(new Set(META_ACTIONS).size).toBe(26);
+  it("assigns every one of the 27 actions an explicit authorization scope", () => {
+    expect(META_ACTIONS).toHaveLength(27);
+    expect(new Set(META_ACTIONS).size).toBe(27);
     expect([...META_ORG_ACTIONS, ...META_PLATFORM_ACTIONS, "overview"].sort()).toEqual([...META_ACTIONS].sort());
   });
 
@@ -57,9 +57,15 @@ describe("Meta Lovable API authorization", () => {
     await expect(authorizeMetaAction(platformAdmin, "overview", null)).resolves.toBeUndefined();
   });
 
-  it("denies the all-client overview to a client administrator", async () => {
+  it("denies the all-client overview and analytics to a client administrator", async () => {
     const clientAdmin = caller({ adminWorkspaces: [WORKSPACE_A] });
     await expect(authorizeMetaAction(clientAdmin, "overview", null)).rejects.toMatchObject({ status: 403 });
+    await expect(authorizeMetaAction(clientAdmin, "conversion-analytics", null)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("allows only the platform administrator to aggregate every workspace", async () => {
+    await expect(authorizeMetaAction(caller({ platform: true }), "conversion-analytics", null)).resolves.toBeUndefined();
+    await expect(authorizeMetaAction(caller(), "conversion-analytics", null)).rejects.toMatchObject({ status: 403 });
   });
 
   it("fails closed when the database role check fails", async () => {

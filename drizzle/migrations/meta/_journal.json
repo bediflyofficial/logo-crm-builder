@@ -162,6 +162,20 @@
       "when": 1795002296731,
       "tag": "0022_fix_meta_capi_claim_aliases",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795002709111,
+      "tag": "0023_meta_conversion_analytics",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795002833884,
+      "tag": "0024_fix_meta_analytics_type_order",
+      "breakpoints": true
     }
   ]
 }
