@@ -34,7 +34,7 @@
 
 ## Approved automatic CAPI implementation
 - [x] Phase 1: preserve lifecycle stages, add Unqualified and Lost, add workspace conversion rules, and make Facebook health permission-aware.
-- [ ] Phase 2: add consent collection/withdrawal and transactional, deduplicated conversion event creation.
+- [x] Phase 2: add consent collection/withdrawal and transactional, deduplicated conversion event creation.
 - [ ] Phase 3: add organization-scoped production CAPI payloads and final pre-send eligibility/consent checks.
 - [ ] Phase 4: add conversion-worker leases, retries, failure handling, and authorized manual retry.
 - [ ] Phase 5: build workspace and Super Admin CAPI delivery analytics and event history.

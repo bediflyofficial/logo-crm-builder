@@ -20,10 +20,16 @@ describe("workspace conversion rules", () => {
     const result = metaConversionRuleSchema.parse({ organizationId: WORKSPACE, triggerType: "status", triggerValue: "Converted", eventName: "Purchase", enabled: false });
     expect(result.eventName).toBe("Purchase");
     expect(result.enabled).toBe(false);
+    expect(result.currency).toBeNull();
   });
 
   it("rejects enabling a rule with no Meta event", () => {
     expect(metaConversionRuleSchema.safeParse({ organizationId: WORKSPACE, triggerType: "status", triggerValue: "Qualified", eventName: null, enabled: true }).success).toBe(false);
+  });
+
+  it("requires a currency before enabling Purchase", () => {
+    expect(metaConversionRuleSchema.safeParse({ organizationId: WORKSPACE, triggerType: "status", triggerValue: "Converted", eventName: "Purchase", enabled: true }).success).toBe(false);
+    expect(metaConversionRuleSchema.safeParse({ organizationId: WORKSPACE, triggerType: "status", triggerValue: "Converted", eventName: "Purchase", enabled: true, currency: "INR" }).success).toBe(true);
   });
 
   it("rejects unknown quality trigger values", () => {

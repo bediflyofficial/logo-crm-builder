@@ -23,7 +23,7 @@ export function MetaConversionRules({ organizationId, statuses, rules, onSaved }
   return <section className="rounded-md border border-border bg-card p-5">
     <div>
       <h3 className="font-semibold">Lifecycle conversion rules</h3>
-      <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Choose which workspace status or quality can map to a Meta event. Rules are disabled by default and this phase does not create or send conversion events.</p>
+      <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Choose which workspace status or quality can map to a Meta event. Enabled rules create consent-checked outbox records; Phase 2 never transmits them to Meta.</p>
     </div>
     <div className="mt-5 divide-y divide-border border-y border-border">
       {entries.map((entry) => {
@@ -38,6 +38,7 @@ export function MetaConversionRules({ organizationId, statuses, rules, onSaved }
 function RuleRow({ organizationId, entry, rule, onSaved }: { organizationId: string; entry: Entry; rule?: Rule | undefined; onSaved: () => Promise<void> }) {
   const [eventName, setEventName] = useState(rule?.event_name ?? "");
   const [enabled, setEnabled] = useState(rule?.enabled ?? false);
+  const [currency, setCurrency] = useState(rule?.currency ?? "");
   const [busy, setBusy] = useState(false);
   async function save() {
     setBusy(true);
@@ -48,6 +49,7 @@ function RuleRow({ organizationId, entry, rule, onSaved }: { organizationId: str
         triggerValue: entry.triggerValue,
         eventName: eventName || null,
         enabled: Boolean(eventName && enabled),
+        currency: eventName === "Purchase" && currency ? currency : null,
       });
       toast.success(`${entry.triggerValue} conversion rule saved.`);
       await onSaved();
@@ -57,12 +59,16 @@ function RuleRow({ organizationId, entry, rule, onSaved }: { organizationId: str
       setBusy(false);
     }
   }
-  return <div className="grid gap-3 py-3 sm:grid-cols-[minmax(150px,1fr)_minmax(160px,1fr)_auto_auto] sm:items-center">
+  return <div className="grid gap-3 py-3 sm:grid-cols-[minmax(140px,1fr)_minmax(150px,1fr)_minmax(120px,0.7fr)_auto_auto] sm:items-center">
     <div><p className="text-sm font-medium">{entry.triggerValue}</p><p className="text-xs capitalize text-muted-foreground">{entry.triggerType}</p></div>
     <select aria-label={`${entry.triggerValue} Meta event`} className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={eventName} disabled={busy} onChange={(event) => setEventName(event.target.value)}>
       <option value="">No Meta event</option>
       <option value="QualifiedLead">QualifiedLead</option>
       <option value="Purchase">Purchase</option>
+    </select>
+    <select aria-label={`${entry.triggerValue} currency`} className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={eventName === "Purchase" ? currency : ""} disabled={busy || eventName !== "Purchase"} onChange={(event) => setCurrency(event.target.value)}>
+      <option value="">Currency</option>
+      {["INR", "USD", "EUR", "GBP", "AED", "AUD", "CAD", "SGD"].map((code) => <option key={code} value={code}>{code}</option>)}
     </select>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(eventName && enabled)} disabled={busy || !eventName} onChange={(event) => setEnabled(event.target.checked)} />Enabled</label>
     <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()}>{busy ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}Save</Button>

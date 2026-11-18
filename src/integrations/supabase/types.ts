@@ -620,37 +620,46 @@ export type Database = {
       meta_consent_evidence: {
         Row: {
           advertising_accepted: boolean
+          consent_source: string
           evidence_reference: string
+          global_privacy_control: boolean
           id: string
           lead_id: string
           matching_accepted: boolean
           notice_version: string
           organization_id: string
           recorded_at: string
+          recorded_by: string | null
           region: string
           withdrawn_at: string | null
         }
         Insert: {
           advertising_accepted: boolean
+          consent_source?: string
           evidence_reference: string
+          global_privacy_control?: boolean
           id?: string
           lead_id: string
           matching_accepted?: boolean
           notice_version: string
           organization_id: string
           recorded_at?: string
+          recorded_by?: string | null
           region: string
           withdrawn_at?: string | null
         }
         Update: {
           advertising_accepted?: boolean
+          consent_source?: string
           evidence_reference?: string
+          global_privacy_control?: boolean
           id?: string
           lead_id?: string
           matching_accepted?: boolean
           notice_version?: string
           organization_id?: string
           recorded_at?: string
+          recorded_by?: string | null
           region?: string
           withdrawn_at?: string | null
         }
@@ -753,6 +762,7 @@ export type Database = {
       meta_conversion_rules: {
         Row: {
           created_at: string
+          currency: string | null
           enabled: boolean
           event_name: string
           id: string
@@ -763,6 +773,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          currency?: string | null
           enabled?: boolean
           event_name: string
           id?: string
@@ -773,6 +784,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          currency?: string | null
           enabled?: boolean
           event_name?: string
           id?: string
@@ -1246,6 +1258,77 @@ export type Database = {
       is_org_member: { Args: { _organization_id: string }; Returns: boolean }
       is_platform_admin: { Args: never; Returns: boolean }
       is_sales_exec: { Args: { _organization_id: string }; Returns: boolean }
+      meta_consent_block_reason: {
+        Args: {
+          _consent_id: string
+          _lead_id: string
+          _organization_id: string
+        }
+        Returns: string
+      }
+      recheck_meta_conversion_consent: {
+        Args: { _event_id: string }
+        Returns: {
+          action_source: string
+          attempts: number
+          consent_id: string | null
+          created_at: string
+          currency: string | null
+          error_code: string | null
+          event_name: string
+          id: string
+          lead_id: string
+          next_attempt_at: string | null
+          occurred_at: string
+          organization_id: string
+          outcome_reference: string
+          provider_received_at: string | null
+          status: string
+          value: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meta_conversion_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_meta_consent: {
+        Args: {
+          _advertising_accepted: boolean
+          _consent_source: string
+          _evidence_reference: string
+          _global_privacy_control: boolean
+          _lead_id: string
+          _matching_accepted: boolean
+          _notice_version: string
+          _organization_id: string
+          _recorded_by: string
+          _region: string
+          _withdrawn: boolean
+        }
+        Returns: {
+          advertising_accepted: boolean
+          consent_source: string
+          evidence_reference: string
+          global_privacy_control: boolean
+          id: string
+          lead_id: string
+          matching_accepted: boolean
+          notice_version: string
+          organization_id: string
+          recorded_at: string
+          recorded_by: string | null
+          region: string
+          withdrawn_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meta_consent_evidence"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       app_role: "platform_admin" | "client_admin" | "sales_exec"

@@ -5,6 +5,7 @@ import { isAllowedCrmOrigin } from "@/lib/crm-admin-rules";
 import { authorizeMetaAction, type MetaAction, type MetaAuthorizationCaller, type MetaCapiConfigView } from "@/lib/meta-api-rules";
 import { assessMetaAccess, canEnableCapi, capiConfigSchema, capiStatusAfterSave, metaConversionRuleSchema, metaSettingsSchema, missingMetaPermissions, type CapiStatus } from "@/lib/meta-rules";
 import { hashMetaState } from "@/lib/meta-crypto.server";
+import { metaConsentSchema, metaConsentWithdrawalSchema } from "@/lib/meta-consent";
 
 type Caller = Awaited<ReturnType<typeof authenticateCaller>>;
 const orgInput = z.object({ organizationId: z.string().uuid() });
@@ -83,7 +84,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       let connectionsQuery = caller.supabase.from("meta_connections").select("id,organization_id,facebook_name,connection_status,token_expires_at,last_sync_at,granted_permissions");
       let assetsQuery = caller.supabase.from("meta_assets").select("*");
       let logsQuery = caller.supabase.from("meta_sync_logs").select("*").order("created_at", { ascending: false }).limit(50);
-      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,event_name,status,occurred_at,error_code").order("created_at", { ascending: false }).limit(50);
+      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,lead_id,consent_id,event_name,outcome_reference,status,occurred_at,value,currency,error_code").order("created_at", { ascending: false }).limit(50);
       let rulesQuery = caller.supabase.from("meta_conversion_rules").select("*").order("trigger_type").order("trigger_value");
       if (data.organizationId) {
         connectionsQuery = connectionsQuery.eq("organization_id", data.organizationId);
@@ -107,6 +108,58 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
         oauthImplemented: true as const,
         processorImplemented: true as const,
       };
+    }
+    case "consent-list": {
+      const data = orgInput.parse(body);
+      await authorize(caller, action, data.organizationId);
+      const [leads, records] = await Promise.all([
+        caller.supabase.from("leads").select("id,full_name,status,quality").eq("organization_id", data.organizationId).is("deleted_at", null).order("created_at", { ascending: false }).limit(500),
+        caller.supabase.from("meta_consent_evidence").select("id,organization_id,lead_id,advertising_accepted,matching_accepted,notice_version,evidence_reference,region,recorded_at,withdrawn_at,consent_source,global_privacy_control,recorded_by").eq("organization_id", data.organizationId).order("recorded_at", { ascending: false }).limit(1000),
+      ]);
+      if (leads.error || records.error) throw new AdminError("Workspace consent records could not be loaded.", 500);
+      return { leads: leads.data ?? [], records: records.data ?? [] };
+    }
+    case "save-consent": {
+      const data = metaConsentSchema.parse(body);
+      await authorize(caller, action, data.organizationId);
+      const { data: lead, error: leadError } = await caller.supabase.from("leads").select("id").eq("id", data.leadId).eq("organization_id", data.organizationId).is("deleted_at", null).maybeSingle();
+      if (leadError || !lead) throw new AdminError("Choose a lead from this workspace.", 404);
+      const { data: saved, error } = await supabaseAdmin.rpc("record_meta_consent", {
+        _organization_id: data.organizationId,
+        _lead_id: data.leadId,
+        _advertising_accepted: data.advertisingAccepted,
+        _matching_accepted: data.matchingAccepted,
+        _notice_version: data.noticeVersion,
+        _evidence_reference: data.evidenceReference,
+        _region: data.region,
+        _consent_source: data.consentSource,
+        _global_privacy_control: data.globalPrivacyControl,
+        _withdrawn: false,
+        _recorded_by: caller.userId,
+      });
+      if (error || !saved) throw new AdminError("Consent choice could not be recorded.", 500);
+      return { saved: true, consent: saved };
+    }
+    case "withdraw-consent": {
+      const data = metaConsentWithdrawalSchema.parse(body);
+      await authorize(caller, action, data.organizationId);
+      const { data: lead, error: leadError } = await caller.supabase.from("leads").select("id").eq("id", data.leadId).eq("organization_id", data.organizationId).is("deleted_at", null).maybeSingle();
+      if (leadError || !lead) throw new AdminError("Choose a lead from this workspace.", 404);
+      const { data: saved, error } = await supabaseAdmin.rpc("record_meta_consent", {
+        _organization_id: data.organizationId,
+        _lead_id: data.leadId,
+        _advertising_accepted: false,
+        _matching_accepted: false,
+        _notice_version: data.noticeVersion,
+        _evidence_reference: data.evidenceReference,
+        _region: data.region,
+        _consent_source: data.consentSource,
+        _global_privacy_control: data.globalPrivacyControl,
+        _withdrawn: true,
+        _recorded_by: caller.userId,
+      });
+      if (error || !saved) throw new AdminError("Consent withdrawal could not be recorded.", 500);
+      return { saved: true, consent: saved };
     }
     case "save-settings": {
       const data = metaSettingsSchema.parse(body);
@@ -144,6 +197,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
         trigger_value: data.triggerValue,
         event_name: data.eventName,
         enabled: data.enabled,
+        currency: data.eventName === "Purchase" ? data.currency ?? null : null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "organization_id,trigger_type,trigger_value" });
       if (error) throw new AdminError("Conversion rule could not be saved.", 500);

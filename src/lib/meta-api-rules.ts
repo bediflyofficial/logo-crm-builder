@@ -4,6 +4,9 @@ import type { CapiStatus } from "@/lib/meta-rules";
 export const META_ORG_ACTIONS = [
   "save-settings",
   "save-conversion-rule",
+  "consent-list",
+  "save-consent",
+  "withdraw-consent",
   "start-oauth",
   "complete-oauth",
   "refresh-assets",
@@ -54,7 +57,7 @@ export async function authorizeMetaAction(
 }
 
 type ConnectionView = Pick<Database["public"]["Tables"]["meta_connections"]["Row"], "id" | "organization_id" | "facebook_name" | "connection_status" | "token_expires_at" | "last_sync_at" | "granted_permissions">;
-type ConversionEventView = Pick<Database["public"]["Tables"]["meta_conversion_events"]["Row"], "id" | "organization_id" | "event_name" | "status" | "occurred_at" | "error_code">;
+type ConversionEventView = Pick<Database["public"]["Tables"]["meta_conversion_events"]["Row"], "id" | "organization_id" | "lead_id" | "consent_id" | "event_name" | "outcome_reference" | "status" | "occurred_at" | "value" | "currency" | "error_code">;
 
 export type MetaOverview = {
   connections: ConnectionView[];

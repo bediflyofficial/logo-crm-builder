@@ -13,12 +13,16 @@ export const metaConversionRuleSchema = z.object({
   triggerValue: z.string().trim().min(1).max(100),
   eventName: z.enum(META_EVENT_NAMES).nullable(),
   enabled: z.boolean(),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullable().optional().default(null),
 }).superRefine((value, context) => {
   if (value.triggerType === "quality" && !["Hot", "Warm", "Cold", "Junk"].includes(value.triggerValue)) {
     context.addIssue({ code: "custom", message: "Choose a valid lead quality.", path: ["triggerValue"] });
   }
   if (!value.eventName && value.enabled) {
     context.addIssue({ code: "custom", message: "Choose a Meta event before enabling this rule.", path: ["enabled"] });
+  }
+  if (value.enabled && value.eventName === "Purchase" && !value.currency) {
+    context.addIssue({ code: "custom", message: "Choose a three-letter currency before enabling a Purchase rule.", path: ["currency"] });
   }
 });
 
