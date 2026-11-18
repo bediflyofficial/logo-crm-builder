@@ -134,6 +134,13 @@
       "when": 1794999221787,
       "tag": "0018_meta_consent_transactional_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795000263532,
+      "tag": "0019_meta_capi_secure_dispatch",
+      "breakpoints": true
     }
   ]
 }

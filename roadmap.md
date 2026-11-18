@@ -35,7 +35,8 @@
 ## Approved automatic CAPI implementation
 - [x] Phase 1: preserve lifecycle stages, add Unqualified and Lost, add workspace conversion rules, and make Facebook health permission-aware.
 - [x] Phase 2: add consent collection/withdrawal and transactional, deduplicated conversion event creation.
-- [ ] Phase 3: add organization-scoped production CAPI payloads and final pre-send eligibility/consent checks.
+- [x] Phase 3 implementation: organization-scoped CAPI payloads, atomic single-event dispatch, and final pre-send eligibility/consent checks; 138 automated tests pass, production remains disabled, no schedule added.
+- [ ] Phase 3 live acceptance: authorized test Dataset/token and Test Event Code are not configured; no Meta events transmitted or receipt verified. Signed-in non-admin send rejection verified; admin UI acceptance remains unverified.
 - [ ] Phase 4: add conversion-worker leases, retries, failure handling, and authorized manual retry.
 - [ ] Phase 5: build workspace and Super Admin CAPI delivery analytics and event history.
 - [ ] Phase 6: run automated security tests and two-workspace/two-Dataset acceptance checks; do not deploy before approval.

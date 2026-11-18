@@ -514,7 +514,10 @@ export type Database = {
       meta_capi_configs: {
         Row: {
           capi_enabled: boolean
+          dataset_eligible: boolean
           dataset_id: string | null
+          eligibility_reviewed_at: string | null
+          eligibility_reviewed_by: string | null
           encrypted_capi_token: string | null
           last_error: string | null
           last_test_event_at: string | null
@@ -527,7 +530,10 @@ export type Database = {
         }
         Insert: {
           capi_enabled?: boolean
+          dataset_eligible?: boolean
           dataset_id?: string | null
+          eligibility_reviewed_at?: string | null
+          eligibility_reviewed_by?: string | null
           encrypted_capi_token?: string | null
           last_error?: string | null
           last_test_event_at?: string | null
@@ -540,7 +546,10 @@ export type Database = {
         }
         Update: {
           capi_enabled?: boolean
+          dataset_eligible?: boolean
           dataset_id?: string | null
+          eligibility_reviewed_at?: string | null
+          eligibility_reviewed_by?: string | null
           encrypted_capi_token?: string | null
           last_error?: string | null
           last_test_event_at?: string | null
@@ -695,7 +704,9 @@ export type Database = {
           occurred_at: string
           organization_id: string
           outcome_reference: string
+          provider_events_received: number | null
           provider_received_at: string | null
+          sent_dataset_id: string | null
           status: string
           value: number | null
         }
@@ -713,7 +724,9 @@ export type Database = {
           occurred_at: string
           organization_id: string
           outcome_reference: string
+          provider_events_received?: number | null
           provider_received_at?: string | null
+          sent_dataset_id?: string | null
           status?: string
           value?: number | null
         }
@@ -731,7 +744,9 @@ export type Database = {
           occurred_at?: string
           organization_id?: string
           outcome_reference?: string
+          provider_events_received?: number | null
           provider_received_at?: string | null
+          sent_dataset_id?: string | null
           status?: string
           value?: number | null
         }
@@ -1282,7 +1297,9 @@ export type Database = {
           occurred_at: string
           organization_id: string
           outcome_reference: string
+          provider_events_received: number | null
           provider_received_at: string | null
+          sent_dataset_id: string | null
           status: string
           value: number | null
         }
@@ -1325,6 +1342,35 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "meta_consent_evidence"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reserve_meta_conversion_send: {
+        Args: { _event_id: string; _organization_id: string }
+        Returns: {
+          action_source: string
+          attempts: number
+          consent_id: string | null
+          created_at: string
+          currency: string | null
+          error_code: string | null
+          event_name: string
+          id: string
+          lead_id: string
+          next_attempt_at: string | null
+          occurred_at: string
+          organization_id: string
+          outcome_reference: string
+          provider_events_received: number | null
+          provider_received_at: string | null
+          sent_dataset_id: string | null
+          status: string
+          value: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meta_conversion_events"
           isOneToOne: true
           isSetofReturn: false
         }

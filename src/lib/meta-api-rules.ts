@@ -19,6 +19,8 @@ export const META_ORG_ACTIONS = [
   "test-capi",
   "send-capi-test",
   "set-capi-enabled",
+  "review-dataset-eligibility",
+  "send-conversion",
   "disconnect-capi",
 ] as const;
 
@@ -81,6 +83,8 @@ export type MetaCapiConfigView = {
   lastTestEventAt: string | null;
   lastError: string | null;
   updatedAt: string | null;
+  datasetEligible: boolean;
+  eligibilityReviewedAt: string | null;
 };
 
 export type MetaAppStatus = {

@@ -42,6 +42,8 @@ function publicView(row: Awaited<ReturnType<typeof loadConfig>>): MetaCapiConfig
     lastTestEventAt: row?.last_test_event_at ?? null,
     lastError: row?.last_error ?? null,
     updatedAt: row?.updated_at ?? null,
+    datasetEligible: row?.dataset_eligible ?? false,
+    eligibilityReviewedAt: row?.eligibility_reviewed_at ?? null,
   };
 }
 
@@ -342,7 +344,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       }
       const changed = !existing || existing.dataset_id !== data.datasetId || Boolean(data.accessToken);
       const status: CapiStatus = changed ? capiStatusAfterSave(true, Boolean(encrypted)) : existing.status as CapiStatus;
-      const { error } = await supabaseAdmin.from("meta_capi_configs").upsert({ organization_id: data.organizationId, dataset_id: data.datasetId, encrypted_capi_token: encrypted, test_event_code: data.testEventCode || null, status, capi_enabled: changed ? false : existing.capi_enabled, last_error: changed ? null : existing.last_error, updated_by: caller.userId, updated_at: new Date().toISOString() });
+      const { error } = await supabaseAdmin.from("meta_capi_configs").upsert({ organization_id: data.organizationId, dataset_id: data.datasetId, encrypted_capi_token: encrypted, test_event_code: data.testEventCode || null, status, capi_enabled: changed ? false : existing.capi_enabled, last_error: changed ? null : existing.last_error, ...(changed ? { dataset_eligible: false, eligibility_reviewed_by: null, eligibility_reviewed_at: null, last_test_event_at: null, last_tested_at: null } : {}), updated_by: caller.userId, updated_at: new Date().toISOString() });
       if (error) throw new AdminError("Conversions API settings could not be saved.", 500);
       await caller.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: caller.userId, action: "meta_capi_saved", entity_type: "meta_capi_config", entity_id: data.organizationId });
       return publicView(await loadConfig(data.organizationId));
@@ -353,7 +355,8 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       const { row, token } = await credentials(data.organizationId);
       const { metaRequest } = await import("@/lib/meta-api.server");
       try {
-        const result = z.object({ id: z.string(), name: z.string().optional() }).parse(await metaRequest(row.dataset_id!, token, { fields: "id,name" }));
+        if (!row.dataset_id) throw new AdminError("Dataset ID is required.");
+        const result = z.object({ id: z.literal(row.dataset_id), name: z.string().optional() }).parse(await metaRequest(row.dataset_id, token, { fields: "id,name" }));
         const keep = row.status === "test_successful" || row.status === "production_active";
         await updateConfig(data.organizationId, { status: keep ? row.status : "connected", last_tested_at: new Date().toISOString(), last_error: null });
         return { ok: true, datasetName: result.name ?? result.id };
@@ -371,8 +374,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       const { createHash } = await import("node:crypto");
       const event = { event_name: "BediflyTestEvent", event_time: Math.floor(Date.now() / 1000), action_source: "system_generated", event_id: `test-${crypto.randomUUID()}`, user_data: { external_id: [createHash("sha256").update(`bedifly-test-${data.organizationId}`).digest("hex")] } };
       try {
-        const result = z.object({ events_received: z.number() }).parse(await metaRequest(`${row.dataset_id}/events`, token, { data: JSON.stringify([event]), test_event_code: row.test_event_code }, "POST"));
-        if (result.events_received < 1) throw new AdminError("Meta did not accept the test event.");
+        const result = z.object({ events_received: z.literal(1) }).parse(await metaRequest(`${row.dataset_id}/events`, token, { data: JSON.stringify([event]), partner_agent: "lovable", test_event_code: row.test_event_code }, "POST"));
         await updateConfig(data.organizationId, { status: row.status === "production_active" ? "production_active" : "test_successful", last_test_event_at: new Date().toISOString(), last_error: null });
         return { eventsReceived: result.events_received };
       } catch (error) {
@@ -385,6 +387,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       await authorize(caller, action, data.organizationId);
       const row = await loadConfig(data.organizationId);
       if (!row) throw new AdminError("Save the Conversions API configuration first.");
+      if (data.enabled && (!row.dataset_eligible || !row.eligibility_reviewed_at || !row.last_test_event_at)) throw new AdminError("Review Dataset eligibility and send a successful test event before enabling production.");
       if (data.enabled && !canEnableCapi(row.status as CapiStatus, Boolean(row.dataset_id), Boolean(row.encrypted_capi_token))) throw new AdminError("Send a successful test event before enabling the Conversions API.");
       await updateConfig(data.organizationId, { capi_enabled: data.enabled, status: data.enabled ? "production_active" : row.status === "production_active" ? "test_successful" : row.status });
       await caller.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: caller.userId, action: data.enabled ? "meta_capi_enabled" : "meta_capi_disabled", entity_type: "meta_capi_config", entity_id: data.organizationId });
@@ -405,6 +408,21 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       const base = "https://lead-lantern-workspaces.lovable.app";
       const settings = APP_SECRETS.map((name) => ({ name, configured: Boolean(process.env[name]?.trim()) }));
       return { settings, missing: settings.filter((setting) => !setting.configured).map((setting) => setting.name), checkedAt: new Date().toISOString(), appIdHint: appId ? `••••${appId.slice(-4)}` : null, graphVersion: process.env["META_GRAPH_API_VERSION"] ?? null, redirectUri, expectedRedirectUri: `${base}/api/public/meta/callback`, redirectMatches: redirectUri === `${base}/api/public/meta/callback`, webhookUrl: `${base}/api/public/meta/webhook`, webhookPath: "/api/public/meta/webhook" };
+    }
+    case "review-dataset-eligibility": {
+      const data = orgInput.extend({ eligible: z.boolean() }).parse(body);
+      await authorize(caller, action, data.organizationId);
+      if (!await loadConfig(data.organizationId)) throw new AdminError("Save Dataset configuration first.");
+      await updateConfig(data.organizationId, { dataset_eligible: data.eligible, eligibility_reviewed_by: caller.userId, eligibility_reviewed_at: new Date().toISOString(), ...(!data.eligible ? { capi_enabled: false, status: "configuration_required" } : {}) });
+      await caller.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: caller.userId, action: "meta_dataset_eligibility_reviewed", entity_type: "meta_capi_config", entity_id: data.organizationId });
+      return publicView(await loadConfig(data.organizationId));
+    }
+    case "send-conversion": {
+      const data = orgInput.extend({ eventId: z.string().uuid() }).parse(body);
+      await authorize(caller, action, data.organizationId);
+      const { dispatchCapiEvent } = await import("@/lib/meta-capi-sender.server");
+      const { capiDispatchStore } = await import("@/lib/meta-capi-store.server");
+      return dispatchCapiEvent(capiDispatchStore, data.organizationId, data.eventId);
     }
     case "test-app": {
       await authorize(caller, action, null);
