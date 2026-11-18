@@ -45,7 +45,7 @@ export async function metaRequest(path: string, token: string | null, params: Re
     const code = failure.success ? failure.data.error.code : undefined;
     // Redact the credential even when a provider echoes it in an error.
     const raw = failure.success ? (failure.data.error.error_user_msg ?? failure.data.error.message ?? "Meta request failed.") : "Meta returned an unreadable response.";
-    const secrets = [token, params["client_secret"], params["fb_exchange_token"], params["code"]].filter((value): value is string => Boolean(value));
+    const secrets = [token, params["client_secret"], params["fb_exchange_token"], params["code"], params["input_token"], params["access_token"]].filter((value): value is string => Boolean(value));
     const message = secrets.reduce((text, secret) => text.replaceAll(secret, "[redacted]"), raw);
     throw new MetaApiError(response.status, code, `Facebook request failed (${response.status}${code ? `, code ${code}` : ""}): ${message}`);
   }

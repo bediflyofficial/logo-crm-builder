@@ -8,6 +8,7 @@ export const META_ORG_ACTIONS = [
   "refresh-assets",
   "select-asset",
   "disconnect-connection",
+  "check-connection",
   "log-oauth-error",
   "capi-config",
   "save-capi",

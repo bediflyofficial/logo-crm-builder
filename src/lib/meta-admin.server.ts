@@ -203,6 +203,38 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       if (auditError) throw new AdminError("Facebook is disconnected but its audit entry could not be saved.", 500);
       return { disconnected: true };
     }
+    case "check-connection": {
+      const data = z.object({ organizationId: z.string().uuid(), connectionId: z.string().uuid() }).parse(body);
+      await authorize(caller, action, data.organizationId);
+      const { data: connection, error } = await supabaseAdmin.from("meta_connections").select("id,encrypted_access_token").eq("id", data.connectionId).eq("organization_id", data.organizationId).maybeSingle();
+      if (error || !connection) throw new AdminError("Facebook connection was not found in this workspace.", 404);
+      if (!connection.encrypted_access_token) throw new AdminError("This Facebook account is disconnected. Connect it again.");
+      const { metaConfig, metaRequest } = await import("@/lib/meta-api.server");
+      const config = metaConfig();
+      const { decryptMetaToken } = await import("@/lib/meta-crypto.server");
+      const userToken = decryptMetaToken(connection.encrypted_access_token, config.encryptionSecret);
+      const now = new Date().toISOString();
+      let result: { healthy: boolean; status: "connected" | "expired" | "revoked"; expiresAt: string | null; scopes: string[]; message: string };
+      try {
+        const debug = z.object({ data: z.object({ is_valid: z.boolean(), app_id: z.string().optional(), expires_at: z.number().optional(), data_access_expires_at: z.number().optional(), scopes: z.array(z.string()).optional(), error: z.object({ message: z.string().optional() }).optional() }) }).parse(await metaRequest("debug_token", null, { input_token: userToken, access_token: `${config.appId}|${config.appSecret}` })).data;
+        const expiresAt = debug.expires_at ? new Date(debug.expires_at * 1000).toISOString() : null;
+        const wrongApp = debug.app_id !== undefined && debug.app_id !== config.appId;
+        const expired = Boolean(debug.expires_at && debug.expires_at * 1000 <= Date.now());
+        const healthy = debug.is_valid && !wrongApp && !expired;
+        result = { healthy, status: healthy ? "connected" : expired ? "expired" : "revoked", expiresAt, scopes: debug.scopes ?? [], message: healthy ? "Facebook access is valid." : wrongApp ? "This access belongs to a different Meta app. Connect again." : expired ? "Facebook access has expired. Reconnect to renew it." : `Facebook access is no longer valid${debug.error?.message ? `: ${debug.error.message}` : ""}. Reconnect to renew it.` };
+      } catch (checkError) {
+        const { MetaApiError } = await import("@/lib/meta-api.server");
+        if (!(checkError instanceof MetaApiError)) throw new AdminError(safeError(checkError));
+        await supabaseAdmin.from("meta_sync_logs").insert({ organization_id: data.organizationId, connection_id: connection.id, sync_type: "health_check", status: "failed", records_processed: 0, error_message: safeError(checkError) });
+        throw checkError;
+      }
+      const update = { connection_status: result.status, token_expires_at: result.expiresAt, updated_at: now, ...(result.scopes.length ? { granted_permissions: result.scopes } : {}) };
+      const { error: updateError } = await supabaseAdmin.from("meta_connections").update(update).eq("id", connection.id).eq("organization_id", data.organizationId);
+      if (updateError) throw new AdminError("Facebook access was checked but its status could not be saved.", 500);
+      await supabaseAdmin.from("meta_sync_logs").insert({ organization_id: data.organizationId, connection_id: connection.id, sync_type: "health_check", status: result.healthy ? "succeeded" : "failed", records_processed: 0, error_message: result.healthy ? null : result.message });
+      await caller.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: caller.userId, action: "meta_connection_checked", entity_type: "meta_connection", entity_id: connection.id });
+      return result;
+    }
     case "log-oauth-error": {
       const data = z.object({ organizationId: z.string().uuid(), message: z.string().min(1).max(500) }).parse(body);
       await authorize(caller, action, data.organizationId);
