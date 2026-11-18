@@ -1272,6 +1272,109 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_admin_recovery_codes: {
+        Row: {
+          code_hash: string
+          created_at: string
+          id: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          id?: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      retention_runs: {
+        Row: {
+          actor_id: string | null
+          candidate_counts: Json
+          created_at: string
+          deleted_counts: Json
+          id: string
+          mode: string
+          organization_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          candidate_counts: Json
+          created_at?: string
+          deleted_counts: Json
+          id?: string
+          mode: string
+          organization_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          candidate_counts?: Json
+          created_at?: string
+          deleted_counts?: Json
+          id?: string
+          mode?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retention_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      retention_settings: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          automatic_deletion_enabled: boolean
+          legal_hold: boolean
+          legal_hold_reason: string | null
+          organization_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          automatic_deletion_enabled?: boolean
+          legal_hold?: boolean
+          legal_hold_reason?: string | null
+          organization_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          automatic_deletion_enabled?: boolean
+          legal_hold?: boolean
+          legal_hold_reason?: string | null
+          organization_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retention_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1592,6 +1695,11 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      run_approved_retention: { Args: { _actor_id: string }; Returns: Json }
+      run_workspace_retention: {
+        Args: { _actor_id: string; _execute: boolean; _organization_id: string }
+        Returns: Json
       }
     }
     Enums: {

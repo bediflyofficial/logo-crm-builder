@@ -15,6 +15,8 @@ import { Route as ApiPublicAdminActionRouteImport } from './routes/api/public/ad
 import { Route as ApiPublicMetaCallbackRouteImport } from './routes/api/public/meta/callback'
 import { Route as ApiPublicMetaProcessRouteImport } from './routes/api/public/meta/process'
 import { Route as ApiPublicMetaWebhookRouteImport } from './routes/api/public/meta/webhook'
+import { Route as ApiPublicSecurityActionRouteImport } from './routes/api/public/security/$action'
+import { Route as ApiPublicSecurityRetentionRouteImport } from './routes/api/public/security/retention'
 import { Route as ApiPublicMetaManageActionRouteImport } from './routes/api/public/meta/manage/$action'
 
 const IndexRoute = IndexRouteImport.update({
@@ -47,6 +49,17 @@ const ApiPublicMetaWebhookRoute = ApiPublicMetaWebhookRouteImport.update({
   path: '/api/public/meta/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSecurityActionRoute = ApiPublicSecurityActionRouteImport.update({
+  id: '/api/public/security/$action',
+  path: '/api/public/security/$action',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicSecurityRetentionRoute =
+  ApiPublicSecurityRetentionRouteImport.update({
+    id: '/api/public/security/retention',
+    path: '/api/public/security/retention',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicMetaManageActionRoute =
   ApiPublicMetaManageActionRouteImport.update({
     id: '/api/public/meta/manage/$action',
@@ -61,6 +74,8 @@ export interface FileRoutesByFullPath {
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
+  '/api/public/security/$action': typeof ApiPublicSecurityActionRoute
+  '/api/public/security/retention': typeof ApiPublicSecurityRetentionRoute
   '/api/public/meta/manage/$action': typeof ApiPublicMetaManageActionRoute
 }
 export interface FileRoutesByTo {
@@ -70,6 +85,8 @@ export interface FileRoutesByTo {
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
+  '/api/public/security/$action': typeof ApiPublicSecurityActionRoute
+  '/api/public/security/retention': typeof ApiPublicSecurityRetentionRoute
   '/api/public/meta/manage/$action': typeof ApiPublicMetaManageActionRoute
 }
 export interface FileRoutesById {
@@ -80,6 +97,8 @@ export interface FileRoutesById {
   '/api/public/meta/callback': typeof ApiPublicMetaCallbackRoute
   '/api/public/meta/process': typeof ApiPublicMetaProcessRoute
   '/api/public/meta/webhook': typeof ApiPublicMetaWebhookRoute
+  '/api/public/security/$action': typeof ApiPublicSecurityActionRoute
+  '/api/public/security/retention': typeof ApiPublicSecurityRetentionRoute
   '/api/public/meta/manage/$action': typeof ApiPublicMetaManageActionRoute
 }
 export interface FileRouteTypes {
@@ -91,6 +110,8 @@ export interface FileRouteTypes {
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
+    | '/api/public/security/$action'
+    | '/api/public/security/retention'
     | '/api/public/meta/manage/$action'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -100,6 +121,8 @@ export interface FileRouteTypes {
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
+    | '/api/public/security/$action'
+    | '/api/public/security/retention'
     | '/api/public/meta/manage/$action'
   id:
     | '__root__'
@@ -109,6 +132,8 @@ export interface FileRouteTypes {
     | '/api/public/meta/callback'
     | '/api/public/meta/process'
     | '/api/public/meta/webhook'
+    | '/api/public/security/$action'
+    | '/api/public/security/retention'
     | '/api/public/meta/manage/$action'
   fileRoutesById: FileRoutesById
 }
@@ -119,6 +144,8 @@ export interface RootRouteChildren {
   ApiPublicMetaCallbackRoute: typeof ApiPublicMetaCallbackRoute
   ApiPublicMetaProcessRoute: typeof ApiPublicMetaProcessRoute
   ApiPublicMetaWebhookRoute: typeof ApiPublicMetaWebhookRoute
+  ApiPublicSecurityActionRoute: typeof ApiPublicSecurityActionRoute
+  ApiPublicSecurityRetentionRoute: typeof ApiPublicSecurityRetentionRoute
   ApiPublicMetaManageActionRoute: typeof ApiPublicMetaManageActionRoute
 }
 
@@ -166,6 +193,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicMetaWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/security/$action': {
+      id: '/api/public/security/$action'
+      path: '/api/public/security/$action'
+      fullPath: '/api/public/security/$action'
+      preLoaderRoute: typeof ApiPublicSecurityActionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/security/retention': {
+      id: '/api/public/security/retention'
+      path: '/api/public/security/retention'
+      fullPath: '/api/public/security/retention'
+      preLoaderRoute: typeof ApiPublicSecurityRetentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/meta/manage/$action': {
       id: '/api/public/meta/manage/$action'
       path: '/api/public/meta/manage/$action'
@@ -183,6 +224,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicMetaCallbackRoute: ApiPublicMetaCallbackRoute,
   ApiPublicMetaProcessRoute: ApiPublicMetaProcessRoute,
   ApiPublicMetaWebhookRoute: ApiPublicMetaWebhookRoute,
+  ApiPublicSecurityActionRoute: ApiPublicSecurityActionRoute,
+  ApiPublicSecurityRetentionRoute: ApiPublicSecurityRetentionRoute,
   ApiPublicMetaManageActionRoute: ApiPublicMetaManageActionRoute,
 }
 export const routeTree = rootRouteImport
