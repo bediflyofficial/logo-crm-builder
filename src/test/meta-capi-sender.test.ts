@@ -3,13 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildCapiPayload, capiFailureCode, dispatchCapiEvent, normalizeMetaPhone, transmitCapiEvent, type CapiDispatchStore, type CapiEvent } from "@/lib/meta-capi-sender.server";
 import { MetaApiError } from "@/lib/meta-api.server";
 
-const event: CapiEvent = { id: "11111111-1111-4111-8111-111111111111", organization_id: "workspace-a", lead_id: "lead-a", event_name: "QualifiedLead", occurred_at: new Date().toISOString(), action_source: "system_generated", value: null, currency: null, status: "processing", sent_dataset_id: "123456789", test_event: false };
+const event: CapiEvent = { id: "11111111-1111-4111-8111-111111111111", organization_id: "workspace-a", lead_id: "lead-a", event_name: "QualifiedLead", occurred_at: new Date().toISOString(), action_source: "system_generated", value: null, currency: null, status: "processing", sent_dataset_id: "123456789", test_event: false, attempts: 1, lease_token: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
 const matching = { email: "  CUSTOMER@EXAMPLE.COM ", phone: "+1 (202) 555-0123" };
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 function store(): CapiDispatchStore {
   let reserved = false;
   return {
     reserve: vi.fn(async (org, id) => { if (reserved || org !== event.organization_id || id !== event.id) return null; reserved = true; return event; }),
+    claim: vi.fn(async () => []),
     credentials: vi.fn(async () => ({ datasetId: "123456789", token: "fixture-only-token" })),
     matching: vi.fn(async () => matching), preflight: vi.fn(async () => true), finish: vi.fn(async () => {}),
   };

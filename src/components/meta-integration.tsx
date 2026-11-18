@@ -52,6 +52,17 @@ export function MetaIntegration({ organizationId, members, statuses, onOpenWorks
     catch (error) { toast.error(error instanceof Error ? error.message : "Facebook action failed."); }
     finally { await invalidate(); setBusy(null); }
   }
+  async function retryConversion(eventId: string, uncertain: boolean) {
+    if (!organizationId || busy) return;
+    if (uncertain && !window.confirm("Meta may already have received this event. Check Events Manager for its event ID before retrying. Queue one manual retry?")) return;
+    setBusy(`conversion-retry-${eventId}`);
+    try {
+      await callMetaApi("retry-conversion", { organizationId, eventId });
+      toast.success("Manual retry queued. The background processor will recheck consent and Dataset eligibility.");
+      await Promise.all([invalidate(), cache.invalidateQueries({ queryKey: ["meta-client-statuses"] })]);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "The retry could not be queued."); }
+    finally { setBusy(null); }
+  }
   async function sendConversionTest(eventId: string) {
     if (!organizationId || busy) return;
     setBusy(`conversion-test-${eventId}`);
@@ -97,10 +108,14 @@ export function MetaIntegration({ organizationId, members, statuses, onOpenWorks
           <p className="mt-1 break-all text-xs text-muted-foreground">Event ID: {event.id}</p>
           {event.sent_dataset_id && <p className="mt-1 text-xs text-muted-foreground">Dataset: {event.sent_dataset_id} · {event.test_event ? "Meta Test Events" : "Production"}</p>}
           {event.provider_received_at && <p className="mt-1 text-xs text-primary">Meta accepted {event.provider_events_received ?? 0} event · {new Date(event.provider_received_at).toLocaleString()}</p>}
+          <p className="mt-1 text-xs text-muted-foreground">{event.attempts} {event.attempts === 1 ? "attempt" : "attempts"}{event.next_attempt_at ? ` · Next automatic retry ${new Date(event.next_attempt_at).toLocaleString()}` : ""}{event.failure_kind ? ` · ${event.failure_kind} failure` : ""}</p>
+          {event.status === "failed" && !event.next_attempt_at && <p className="mt-1 text-xs text-muted-foreground">Automatic retries stopped. Check the configuration or Meta receipt before using manual retry.</p>}
+          {data.deliveryAttempts.filter((attempt) => attempt.event_id === event.id).slice(0, 3).map((attempt) => <p key={attempt.id} className="mt-1 text-xs text-muted-foreground">Attempt {attempt.attempt_number}: {attempt.status}{attempt.error_code ? ` · ${attempt.error_code}` : ""} · {new Date(attempt.started_at).toLocaleString()}</p>)}
         </div>
         <div className="flex flex-wrap items-start gap-2 md:justify-end">
           <span className={event.status === "blocked" || event.status === "failed" ? "text-destructive" : "text-muted-foreground"}>{event.status}{event.error_code ? ` · ${event.error_code}` : ""}</span>
           {organizationId && event.status === "pending" && <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void sendConversionTest(event.id)}>{busy === `conversion-test-${event.id}` ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}Send test event</Button>}
+          {organizationId && event.status === "failed" && !event.test_event && <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void retryConversion(event.id, event.failure_kind === "uncertain")}>{busy === `conversion-retry-${event.id}` ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}Manual retry</Button>}
         </div>
       </div>) : <Empty title="No conversion events" detail="No customer data has been transmitted to Meta." />}
     </section>}

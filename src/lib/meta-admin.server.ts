@@ -86,17 +86,19 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       let connectionsQuery = caller.supabase.from("meta_connections").select("id,organization_id,facebook_name,connection_status,token_expires_at,last_sync_at,granted_permissions");
       let assetsQuery = caller.supabase.from("meta_assets").select("*");
       let logsQuery = caller.supabase.from("meta_sync_logs").select("*").order("created_at", { ascending: false }).limit(50);
-      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,lead_id,consent_id,event_name,outcome_reference,status,occurred_at,value,currency,error_code,test_event,sent_dataset_id,provider_received_at,provider_events_received").order("created_at", { ascending: false }).limit(50);
+      let eventsQuery = caller.supabase.from("meta_conversion_events").select("id,organization_id,lead_id,consent_id,event_name,outcome_reference,status,occurred_at,value,currency,error_code,test_event,sent_dataset_id,provider_received_at,provider_events_received,attempts,next_attempt_at,failure_kind,last_attempt_at,lease_until,retry_requested_at").order("created_at", { ascending: false }).limit(50);
+      let attemptsQuery = caller.supabase.from("meta_conversion_delivery_attempts").select("id,event_id,organization_id,attempt_number,status,error_code,failure_kind,dataset_id,test_event,provider_events_received,started_at,finished_at").order("started_at", { ascending: false }).limit(200);
       let rulesQuery = caller.supabase.from("meta_conversion_rules").select("*").order("trigger_type").order("trigger_value");
       if (data.organizationId) {
         connectionsQuery = connectionsQuery.eq("organization_id", data.organizationId);
         assetsQuery = assetsQuery.eq("organization_id", data.organizationId);
         logsQuery = logsQuery.eq("organization_id", data.organizationId);
         eventsQuery = eventsQuery.eq("organization_id", data.organizationId);
+        attemptsQuery = attemptsQuery.eq("organization_id", data.organizationId);
         rulesQuery = rulesQuery.eq("organization_id", data.organizationId);
       }
-      const [connections, assets, logs, events, rules] = await Promise.all([connectionsQuery, assetsQuery, logsQuery, eventsQuery, rulesQuery]);
-      for (const result of [connections, assets, logs, events, rules]) if (result.error) throw new AdminError("Meta integration records could not be loaded.", 500);
+      const [connections, assets, logs, events, attempts, rules] = await Promise.all([connectionsQuery, assetsQuery, logsQuery, eventsQuery, attemptsQuery, rulesQuery]);
+      for (const result of [connections, assets, logs, events, attempts, rules]) if (result.error) throw new AdminError("Meta integration records could not be loaded.", 500);
       const settings = data.organizationId ? await caller.supabase.from("meta_integration_settings").select("*").eq("organization_id", data.organizationId).maybeSingle() : null;
       if (settings?.error) throw new AdminError("Meta settings could not be loaded.", 500);
       return {
@@ -104,6 +106,7 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
         assets: assets.data ?? [],
         logs: logs.data ?? [],
         events: events.data ?? [],
+        deliveryAttempts: attempts.data ?? [],
         settings: settings?.data ?? null,
         conversionRules: rules.data ?? [],
         missingConfiguration: APP_SECRETS.filter((name) => !process.env[name]),
@@ -417,6 +420,15 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       await caller.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: caller.userId, action: "meta_dataset_eligibility_reviewed", entity_type: "meta_capi_config", entity_id: data.organizationId });
       return publicView(await loadConfig(data.organizationId));
     }
+    case "retry-conversion": {
+      const data = orgInput.extend({ eventId: z.string().uuid() }).parse(body);
+      await authorize(caller, action, data.organizationId);
+      const { data: queued, error } = await supabaseAdmin.rpc("request_meta_conversion_retry", { _organization_id: data.organizationId, _event_id: data.eventId });
+      if (error) throw new AdminError("The conversion retry could not be queued.", 500);
+      if (!queued) throw new AdminError("Only a failed production event without a Meta receipt can be retried.");
+      await caller.supabase.from("audit_logs").insert({ organization_id: data.organizationId, user_id: caller.userId, action: "meta_conversion_retry_requested", entity_type: "meta_conversion_event", entity_id: data.eventId });
+      return { status: "retry_queued", eventId: queued.id, nextAttemptAt: queued.next_attempt_at };
+    }
     case "send-conversion": {
       const data = orgInput.extend({ eventId: z.string().uuid() }).parse(body);
       await authorize(caller, action, data.organizationId);
@@ -465,4 +477,5 @@ export async function runMetaAction(action: MetaAction, caller: Caller, body: un
       });
     }
   }
+  throw new AdminError("Unknown Meta action.", 404);
 }

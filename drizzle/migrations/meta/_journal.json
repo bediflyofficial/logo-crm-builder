@@ -148,6 +148,20 @@
       "when": 1795001245751,
       "tag": "0020_meta_capi_test_event_dispatch",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795002108778,
+      "tag": "0021_meta_capi_worker_reliability",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795002296731,
+      "tag": "0022_fix_meta_capi_claim_aliases",
+      "breakpoints": true
     }
   ]
 }

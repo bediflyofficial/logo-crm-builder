@@ -689,6 +689,66 @@ export type Database = {
           },
         ]
       }
+      meta_conversion_delivery_attempts: {
+        Row: {
+          attempt_number: number
+          dataset_id: string | null
+          error_code: string | null
+          event_id: string
+          failure_kind: string | null
+          finished_at: string | null
+          id: string
+          organization_id: string
+          provider_events_received: number | null
+          started_at: string
+          status: string
+          test_event: boolean
+        }
+        Insert: {
+          attempt_number: number
+          dataset_id?: string | null
+          error_code?: string | null
+          event_id: string
+          failure_kind?: string | null
+          finished_at?: string | null
+          id: string
+          organization_id: string
+          provider_events_received?: number | null
+          started_at?: string
+          status?: string
+          test_event?: boolean
+        }
+        Update: {
+          attempt_number?: number
+          dataset_id?: string | null
+          error_code?: string | null
+          event_id?: string
+          failure_kind?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id?: string
+          provider_events_received?: number | null
+          started_at?: string
+          status?: string
+          test_event?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_conversion_delivery_attempts_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "meta_conversion_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_conversion_delivery_attempts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_conversion_events: {
         Row: {
           action_source: string
@@ -698,14 +758,19 @@ export type Database = {
           currency: string | null
           error_code: string | null
           event_name: string
+          failure_kind: string | null
           id: string
+          last_attempt_at: string | null
           lead_id: string
+          lease_token: string | null
+          lease_until: string | null
           next_attempt_at: string | null
           occurred_at: string
           organization_id: string
           outcome_reference: string
           provider_events_received: number | null
           provider_received_at: string | null
+          retry_requested_at: string | null
           sent_dataset_id: string | null
           status: string
           test_event: boolean
@@ -719,14 +784,19 @@ export type Database = {
           currency?: string | null
           error_code?: string | null
           event_name: string
+          failure_kind?: string | null
           id?: string
+          last_attempt_at?: string | null
           lead_id: string
+          lease_token?: string | null
+          lease_until?: string | null
           next_attempt_at?: string | null
           occurred_at: string
           organization_id: string
           outcome_reference: string
           provider_events_received?: number | null
           provider_received_at?: string | null
+          retry_requested_at?: string | null
           sent_dataset_id?: string | null
           status?: string
           test_event?: boolean
@@ -740,14 +810,19 @@ export type Database = {
           currency?: string | null
           error_code?: string | null
           event_name?: string
+          failure_kind?: string | null
           id?: string
+          last_attempt_at?: string | null
           lead_id?: string
+          lease_token?: string | null
+          lease_until?: string | null
           next_attempt_at?: string | null
           occurred_at?: string
           organization_id?: string
           outcome_reference?: string
           provider_events_received?: number | null
           provider_received_at?: string | null
+          retry_requested_at?: string | null
           sent_dataset_id?: string | null
           status?: string
           test_event?: boolean
@@ -1238,6 +1313,41 @@ export type Database = {
         Args: { _assigned_to: string; _organization_id: string }
         Returns: boolean
       }
+      claim_meta_conversion_events: {
+        Args: { _limit?: number }
+        Returns: {
+          action_source: string
+          attempts: number
+          consent_id: string | null
+          created_at: string
+          currency: string | null
+          error_code: string | null
+          event_name: string
+          failure_kind: string | null
+          id: string
+          last_attempt_at: string | null
+          lead_id: string
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string | null
+          occurred_at: string
+          organization_id: string
+          outcome_reference: string
+          provider_events_received: number | null
+          provider_received_at: string | null
+          retry_requested_at: string | null
+          sent_dataset_id: string | null
+          status: string
+          test_event: boolean
+          value: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "meta_conversion_events"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_meta_lead_jobs: {
         Args: { _limit?: number }
         Returns: {
@@ -1261,6 +1371,19 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      complete_meta_conversion_delivery: {
+        Args: {
+          _error_code: string
+          _event_id: string
+          _events_received: number
+          _failure_kind: string
+          _lease_token: string
+          _organization_id: string
+          _retry_delay_seconds: number
+          _status: string
+        }
+        Returns: boolean
       }
       ingest_meta_lead: {
         Args: {
@@ -1294,14 +1417,19 @@ export type Database = {
           currency: string | null
           error_code: string | null
           event_name: string
+          failure_kind: string | null
           id: string
+          last_attempt_at: string | null
           lead_id: string
+          lease_token: string | null
+          lease_until: string | null
           next_attempt_at: string | null
           occurred_at: string
           organization_id: string
           outcome_reference: string
           provider_events_received: number | null
           provider_received_at: string | null
+          retry_requested_at: string | null
           sent_dataset_id: string | null
           status: string
           test_event: boolean
@@ -1350,6 +1478,41 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      request_meta_conversion_retry: {
+        Args: { _event_id: string; _organization_id: string }
+        Returns: {
+          action_source: string
+          attempts: number
+          consent_id: string | null
+          created_at: string
+          currency: string | null
+          error_code: string | null
+          event_name: string
+          failure_kind: string | null
+          id: string
+          last_attempt_at: string | null
+          lead_id: string
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string | null
+          occurred_at: string
+          organization_id: string
+          outcome_reference: string
+          provider_events_received: number | null
+          provider_received_at: string | null
+          retry_requested_at: string | null
+          sent_dataset_id: string | null
+          status: string
+          test_event: boolean
+          value: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meta_conversion_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       reserve_meta_conversion_send: {
         Args: { _event_id: string; _organization_id: string }
         Returns: {
@@ -1360,14 +1523,19 @@ export type Database = {
           currency: string | null
           error_code: string | null
           event_name: string
+          failure_kind: string | null
           id: string
+          last_attempt_at: string | null
           lead_id: string
+          lease_token: string | null
+          lease_until: string | null
           next_attempt_at: string | null
           occurred_at: string
           organization_id: string
           outcome_reference: string
           provider_events_received: number | null
           provider_received_at: string | null
+          retry_requested_at: string | null
           sent_dataset_id: string | null
           status: string
           test_event: boolean
@@ -1390,14 +1558,19 @@ export type Database = {
           currency: string | null
           error_code: string | null
           event_name: string
+          failure_kind: string | null
           id: string
+          last_attempt_at: string | null
           lead_id: string
+          lease_token: string | null
+          lease_until: string | null
           next_attempt_at: string | null
           occurred_at: string
           organization_id: string
           outcome_reference: string
           provider_events_received: number | null
           provider_received_at: string | null
+          retry_requested_at: string | null
           sent_dataset_id: string | null
           status: string
           test_event: boolean

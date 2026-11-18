@@ -12,6 +12,11 @@ export const capiDispatchStore: CapiDispatchStore = {
     if (error) throw new CapiDispatchError("event_unavailable");
     return data?.id ? data : null;
   },
+  async claim(limit) {
+    const { data, error } = await supabaseAdmin.rpc("claim_meta_conversion_events", { _limit: limit });
+    if (error) throw new CapiDispatchError("event_unavailable");
+    return data ?? [];
+  },
   async credentials(event) {
     const { data, error } = await supabaseAdmin.from("meta_capi_configs").select("*").eq("organization_id", event.organization_id).single();
     const key = process.env["META_TOKEN_ENCRYPTION_KEY"];
@@ -31,11 +36,16 @@ export const capiDispatchStore: CapiDispatchStore = {
     const { data: checked, error } = await supabaseAdmin.rpc("recheck_meta_conversion_consent", { _event_id: event.id });
     if (error || checked?.organization_id !== event.organization_id || checked.status !== "processing" || checked.provider_received_at || checked.test_event !== testEvent) return false;
     if (!checked.consent_id) return false;
-    const { data: original, error: consentError } = await supabaseAdmin.from("meta_consent_evidence").select("recorded_at").eq("id", checked.consent_id).eq("organization_id", event.organization_id).eq("lead_id", event.lead_id).single();
-    if (consentError || !original || Date.parse(original.recorded_at) > Date.parse(event.occurred_at)) return false;
-    const { data: config, error: configError } = await supabaseAdmin.from("meta_capi_configs").select("*").eq("organization_id", event.organization_id).single();
+    const [originalResult, configResult, organizationResult] = await Promise.all([
+      supabaseAdmin.from("meta_consent_evidence").select("recorded_at").eq("id", checked.consent_id).eq("organization_id", event.organization_id).eq("lead_id", event.lead_id).single(),
+      supabaseAdmin.from("meta_capi_configs").select("*").eq("organization_id", event.organization_id).single(),
+      supabaseAdmin.from("organizations").select("id").eq("id", event.organization_id).eq("status", "active").is("deleted_at", null).maybeSingle(),
+    ]);
+    const original = originalResult.data;
+    const config = configResult.data;
     const key = process.env["META_TOKEN_ENCRYPTION_KEY"];
-    if (configError || !config || !key || !config.encrypted_capi_token) return false;
+    if (originalResult.error || !original || Date.parse(original.recorded_at) > Date.parse(event.occurred_at)) return false;
+    if (configResult.error || !config || !key || !config.encrypted_capi_token || organizationResult.error || !organizationResult.data) return false;
     const modeAllowed = testEvent
       ? ["test_successful", "production_active"].includes(config.status) && Boolean(config.test_event_code?.trim())
       : config.capi_enabled && config.status === "production_active";
@@ -43,8 +53,18 @@ export const capiDispatchStore: CapiDispatchStore = {
     const { data: latest, error: latestError } = await supabaseAdmin.rpc("recheck_meta_conversion_consent", { _event_id: event.id });
     return !latestError && latest?.organization_id === event.organization_id && latest.status === "processing" && !latest.provider_received_at && latest.test_event === testEvent;
   },
-  async finish(event, status, code, received) {
-    const { error } = await supabaseAdmin.from("meta_conversion_events").update({ status, error_code: code, next_attempt_at: null, ...(received === 1 ? { provider_received_at: new Date().toISOString(), provider_events_received: received } : {}) }).eq("id", event.id).eq("organization_id", event.organization_id).is("provider_received_at", null);
-    if (error) throw new CapiDispatchError("receipt_persistence_failed");
+  async finish(event, status, code, received, failure) {
+    if (!event.lease_token) throw new CapiDispatchError("receipt_persistence_failed");
+    const { data, error } = await supabaseAdmin.rpc("complete_meta_conversion_delivery", {
+      _event_id: event.id,
+      _organization_id: event.organization_id,
+      _lease_token: event.lease_token,
+      _status: status,
+      _error_code: code as string,
+      _failure_kind: (failure?.kind ?? null) as string,
+      _retry_delay_seconds: failure?.retryDelaySeconds as number,
+      _events_received: received ?? 0,
+    });
+    if (error || data !== true) throw new CapiDispatchError("receipt_persistence_failed");
   },
 };
