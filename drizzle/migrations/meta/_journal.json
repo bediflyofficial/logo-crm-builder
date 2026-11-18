@@ -176,6 +176,13 @@
       "when": 1795002833884,
       "tag": "0024_fix_meta_analytics_type_order",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795003509044,
+      "tag": "0025_tighten_meta_conversion_table_grants",
+      "breakpoints": true
     }
   ]
 }

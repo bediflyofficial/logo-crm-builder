@@ -39,4 +39,6 @@
 - [ ] Phase 3 live acceptance: authorized test Dataset/token and Test Event Code are not configured; no Meta events transmitted or receipt verified. Master overview and workspace Dataset configuration screens return HTTP 200 and render successfully; credentialed save/send acceptance remains blocked.
 - [x] Phase 4 implementation: existing-outbox worker leases, bounded exponential retries, safe failure history, invalid-token pause and authorized manual retry; 158 tests plus two-workspace rollback checks pass, combined one-minute schedule configured, production remains disabled and unpublished.
 - [x] Phase 5 implementation: authorized workspace/Super Admin CAPI analytics, UTC date/type/mode filters, delivery rates, trend charts, daily and workspace breakdowns, empty states, and delivery-monitoring links; 168 tests plus rollback calculations pass, production remains disabled and unpublished.
-- [ ] Phase 6: run automated security tests and two-workspace/two-Dataset acceptance checks; do not deploy before approval.
+- [x] Phase 6 audit: review Meta/CAPI security, run automated and endpoint checks, tighten conversion-table grants, and document deployment readiness without deploying.
+- [ ] Resolve 12 high and 8 moderate dependency findings, obtain the pending deep-scan result, and rerun security scans before release.
+- [ ] Complete live two-workspace/two-Dataset acceptance, real Meta Test Event receipts, OAuth/lead sync verification, and scheduler-run confirmation; no credentials or receipts are currently available.
