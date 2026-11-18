@@ -12,7 +12,11 @@ export const Route = createFileRoute("/api/public/meta/process")({
     const { authenticateCronRequest } = await import("@/integrations/supabase/cron-auth");
     const denied = await authenticateCronRequest(request);
     if (denied) return denied;
-    const body = jobSchema.safeParse(await request.json().catch(() => null));
+    const raw = await request.text().catch(() => "");
+    let parsed: unknown = null;
+    try { parsed = raw ? JSON.parse(raw) : { kind: "all" }; if (typeof parsed === "string") parsed = JSON.parse(parsed); } catch { parsed = null; }
+    const body = jobSchema.safeParse(parsed);
+    if (!body.success) console.warn("meta process: rejected job body", { length: raw.length, type: typeof parsed });
     if (!body.success) return new Response("Invalid job request", { status: 400 });
 
     const runLeadSync = async () => {

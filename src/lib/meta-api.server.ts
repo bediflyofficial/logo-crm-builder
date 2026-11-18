@@ -56,7 +56,7 @@ export async function metaList(path: string, token: string, fields: string) {
   const records: Record<string, unknown>[] = [];
   let after: string | undefined;
   for (let page = 0; page < 20; page++) {
-    const result = z.object({ data: z.array(z.record(z.unknown())), paging: z.object({ cursors: z.object({ after: z.string().optional() }).optional(), next: z.string().optional() }).optional() }).parse(await metaRequest(path, token, { fields, limit: "100", ...(after ? { after } : {}) }));
+    const result = z.object({ data: z.array(z.record(z.string(), z.unknown())), paging: z.object({ cursors: z.object({ after: z.string().optional() }).optional(), next: z.string().optional() }).optional() }).parse(await metaRequest(path, token, { fields, limit: "100", ...(after ? { after } : {}) }));
     records.push(...result.data);
     if (!result.paging?.next) return records;
     after = result.paging.cursors?.after;
